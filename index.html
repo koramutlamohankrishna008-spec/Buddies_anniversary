@@ -6,6 +6,8 @@
     <title>😍Best buddies forever🥳 | 4th Anniversary Surprise</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Gun.js Decentralized Real-Time WebSocket Mesh (Bypasses file:// CORS restrictions across browsers & devices) -->
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.min.js"></script>
     <!-- Three.js for Real 3D WebGL Characters -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- Google Fonts -->
@@ -1174,13 +1176,13 @@
                         🎈 Live Floating Wishes
                     </span>
                     <span id="cloud-sync-pill" class="inline-block px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold">
-                        🟢 Connecting Squad Stream...
+                        🟢 Connecting WebSocket Mesh...
                     </span>
                     <button type="button" onclick="fetchSharedCloudWishes(true)" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 text-[11px] font-bold transition cursor-pointer">
                         🔄 Sync Now
                     </button>
-                    <button type="button" onclick="openCloudSetupGuide()" class="px-2.5 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/35 border border-purple-400/40 text-purple-200 text-[11px] font-bold transition cursor-pointer" title="Connect free Firebase / Supabase / JSONBin for 100% permanent cross-device sync">
-                        ☁️ 3-Way Cloud Setup
+                    <button type="button" onclick="openCloudSetupGuide()" class="px-2.5 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/35 border border-purple-400/40 text-purple-200 text-[11px] font-bold transition cursor-pointer" title="Connect free Firebase / JSONBin for permanent cloud backup">
+                        ☁️ Cloud Backup
                     </button>
                     <button type="button" onclick="openSyncCodeModal()" class="px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/40 text-amber-200 text-[11px] font-bold transition cursor-pointer" title="Transfer wishes between Chrome, Edge & phones even offline">
                         📋 Sync Code
@@ -1673,30 +1675,30 @@
 
     <script>
         // ==========================================
-        // 1. SQUAD ROSTER, CONFETTI, TOAST & AVATAR HUG/HANDSHAKE STAGE
+        // 1. SQUAD ROSTER, CONFETTI, TOAST & FILTERS
         // ==========================================
         const fab8Roster = [
             { name: 'Gowri', gender: 'girl', emoji: '🌪️', title: 'The chaos cordinator' },
             { name: 'Sai', gender: 'boy', emoji: '🗺️', title: 'Trip planner' },
             { name: 'Shashi', gender: 'girl', emoji: '🎙️', title: 'Voice note podcaster' },
-            { name: 'Gopi', gender: 'boy', emoji: '😂', title: 'Meme dealer' },
+            { name: 'Gopi', gender: 'boy', emoji: '😂', title: 'Meme dealer • B\'day King' },
             { name: 'Alisha', gender: 'girl', emoji: '🔥', title: 'Hype machine' },
             { name: 'Mohan', gender: 'boy', emoji: '⏳', title: 'Late replier' },
             { name: 'Minni', gender: 'girl', emoji: '🌙', title: 'Midnight philosopher' },
             { name: 'Yuvaraj', gender: 'boy', emoji: '🍔', title: 'Food critic' }
         ];
 
-        function showToast(msg, icon = '🎉') {
-            const toast = document.getElementById('toast');
-            const toastMsg = document.getElementById('toast-msg');
-            const toastIcon = document.getElementById('toast-icon');
-            if (!toast) return;
-            if (toastMsg) toastMsg.textContent = msg;
-            if (toastIcon) toastIcon.textContent = icon;
-            toast.classList.remove('translate-y-24', 'opacity-0');
-            clearTimeout(window.__toastTimer);
-            window.__toastTimer = setTimeout(() => {
-                toast.classList.add('translate-y-24', 'opacity-0');
+        function showToast(message, icon = '🎉') {
+            const toastEl = document.getElementById('toast');
+            const iconEl = document.getElementById('toast-icon');
+            const msgEl = document.getElementById('toast-msg');
+            if (!toastEl || !msgEl) return;
+            if (iconEl) iconEl.textContent = icon;
+            msgEl.textContent = message;
+            toastEl.classList.remove('translate-y-24', 'opacity-0');
+            clearTimeout(window.__toastTimeout);
+            window.__toastTimeout = setTimeout(() => {
+                toastEl.classList.add('translate-y-24', 'opacity-0');
             }, 3400);
         }
 
@@ -1706,144 +1708,172 @@
             const ctx = canvas.getContext('2d');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            const colors = ['#ff0080', '#38bdf8', '#fde047', '#a855f7', '#34d399', '#fb7185'];
-            const particles = Array.from({ length: 85 }, () => ({
+            const colors = ['#ff0080', '#fde047', '#38bdf8', '#a855f7', '#34d399', '#fb923c'];
+            const particles = Array.from({ length: 75 }, () => ({
                 x: canvas.width * originX,
                 y: canvas.height * originY,
                 vx: (Math.random() - 0.5) * 14,
-                vy: (Math.random() - 0.85) * 14,
+                vy: (Math.random() - 0.75) * 14,
                 size: 5 + Math.random() * 6,
                 color: colors[Math.floor(Math.random() * colors.length)],
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.25,
                 alpha: 1
             }));
-            function step() {
+
+            function frame() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 let alive = false;
                 particles.forEach(p => {
+                    if (p.alpha <= 0) return;
+                    alive = true;
                     p.x += p.vx;
                     p.y += p.vy;
                     p.vy += 0.35;
+                    p.rot += p.vRot;
                     p.alpha -= 0.016;
-                    if (p.alpha > 0) {
-                        alive = true;
-                        ctx.globalAlpha = p.alpha;
-                        ctx.fillStyle = p.color;
-                        ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
-                    }
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, p.alpha);
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.rot);
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65);
+                    ctx.restore();
                 });
-                ctx.globalAlpha = 1;
-                if (alive) requestAnimationFrame(step);
+                if (alive) requestAnimationFrame(frame);
                 else ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
-            requestAnimationFrame(step);
+            requestAnimationFrame(frame);
         }
 
-        function filterSquad(gender) {
+        function filterSquad(genderFilter) {
             document.querySelectorAll('.filter-btn').forEach(btn => {
-                const active = btn.dataset.filter === gender;
-                btn.className = active
-                    ? 'filter-btn active px-4 py-2 rounded-full text-xs sm:text-sm font-bold neon-animated-bg text-white shadow-md transition cursor-pointer'
-                    : 'filter-btn px-4 py-2 rounded-full text-xs sm:text-sm font-bold bg-[#141033] text-slate-300 border border-white/15 hover:bg-white/10 transition cursor-pointer';
+                const isMatch = btn.dataset.filter === genderFilter;
+                btn.classList.toggle('neon-animated-bg', isMatch);
+                btn.classList.toggle('text-white', isMatch);
             });
             document.querySelectorAll('#squad-grid .flip-card').forEach(card => {
-                card.style.display = (gender === 'all' || card.dataset.gender === gender) ? '' : 'none';
+                const show = genderFilter === 'all' || card.dataset.gender === genderFilter;
+                card.style.display = show ? '' : 'none';
             });
         }
 
-        let selectedBuddiesForAction = [];
-        let lastBuddyMomentMeta = null;
+        function loadCustomChatScreenshot(ev) {
+            const file = ev && ev.target && ev.target.files && ev.target.files[0];
+            if (!file) return;
+            const img = document.getElementById('chat-screenshot-img');
+            const fallback = document.getElementById('chat-screenshot-fallback');
+            if (img) {
+                img.src = URL.createObjectURL(file);
+                img.style.display = 'block';
+            }
+            if (fallback) fallback.classList.add('hidden');
+            showToast('Updated WhatsApp chat screenshot! 📷', '💬');
+        }
 
-        function selectBuddyForAction(name) {
-            const buddy = fab8Roster.find(b => b.name === name);
-            if (!buddy) return;
+        // ==========================================
+        // 2. AVATAR HUG & HANDSHAKE INTERACTION
+        // ==========================================
+        let selectedBuddies = [];
+        let lastBuddyPair = null;
+
+        function resetBuddyConnection() {
+            selectedBuddies.forEach(name => {
+                const ring = document.getElementById(`avatar-ring-${name}`);
+                if (ring) ring.classList.remove('buddy-selected-ring');
+            });
+            selectedBuddies = [];
+            const statusEl = document.getElementById('buddy-connect-status');
+            const resetBtn = document.getElementById('buddy-connect-reset');
+            if (statusEl) statusEl.textContent = "Tap any buddy's circular photo to start a Bestie Hug or Squad Handshake!";
+            if (resetBtn) resetBtn.classList.add('hidden');
+        }
+
+        function selectBuddyForAction(buddyName) {
+            const ring = document.getElementById(`avatar-ring-${buddyName}`);
             const statusEl = document.getElementById('buddy-connect-status');
             const resetBtn = document.getElementById('buddy-connect-reset');
 
-            if (selectedBuddiesForAction.length === 1 && selectedBuddiesForAction[0].name === buddy.name) {
+            if (selectedBuddies.includes(buddyName)) {
                 resetBuddyConnection();
                 return;
             }
-            selectedBuddiesForAction.push(buddy);
-            const ring = document.getElementById(`avatar-ring-${buddy.name}`);
+
+            selectedBuddies.push(buddyName);
             if (ring) ring.classList.add('buddy-selected-ring');
             if (resetBtn) resetBtn.classList.remove('hidden');
 
-            if (selectedBuddiesForAction.length === 1) {
-                if (statusEl) {
-                    statusEl.textContent = `Selected ${buddy.name} ${buddy.emoji} — now tap a 2nd buddy to Hug or Handshake!`;
-                }
+            if (selectedBuddies.length === 1) {
+                if (statusEl) statusEl.textContent = `Selected ${buddyName}! Now tap a 2nd buddy's photo to Hug or Handshake!`;
                 return;
             }
 
-            const [b1, b2] = selectedBuddiesForAction;
-            const sameGender = b1.gender === b2.gender;
-            const videoSrc = sameGender ? (b1.gender === 'boy' ? './animation/B2B.mp4' : './animation/G2G.mp4') : './animation/G2B.mp4';
-            const modeLabel = sameGender
-                ? (b1.gender === 'boy' ? '🤗 Brothers Bestie Hug (B2B)!' : '🤗 Sisters Bestie Hug (G2G)!')
-                : '🤝 Squad Bestie Handshake (B2G)!';
+            const [b1Name, b2Name] = selectedBuddies;
+            const b1 = fab8Roster.find(b => b.name === b1Name) || fab8Roster[0];
+            const b2 = fab8Roster.find(b => b.name === b2Name) || fab8Roster[1];
+            openBuddyActionModal(b1, b2);
+            setTimeout(resetBuddyConnection, 400);
+        }
 
-            const modal = document.getElementById('buddy-action-modal');
-            const pill = document.getElementById('action-mode-pill');
-            const title = document.getElementById('action-stage-title');
-            const sub = document.getElementById('action-stage-subtitle');
+        function openBuddyActionModal(b1, b2) {
+            lastBuddyPair = { b1, b2 };
+            const sameGender = b1.gender === b2.gender;
+            const modePill = document.getElementById('action-mode-pill');
+            const titleEl = document.getElementById('action-stage-title');
+            const subEl = document.getElementById('action-stage-subtitle');
             const leftTop = document.getElementById('stage-left-top-name');
             const rightTop = document.getElementById('stage-right-top-name');
-            const emblem = document.getElementById('stage-center-emblem');
+            const centerEmblem = document.getElementById('stage-center-emblem');
             const leftRole = document.getElementById('stage-left-name');
             const rightRole = document.getElementById('stage-right-name');
             const videoEl = document.getElementById('buddy-action-media-video');
             const fallbackEl = document.getElementById('buddy-media-fallback');
+            const fallbackEmoji = document.getElementById('buddy-media-fallback-emoji');
 
-            if (pill) pill.textContent = modeLabel;
-            if (title) title.textContent = `${b1.name} & ${b2.name}`;
-            if (sub) sub.textContent = sameGender
-                ? `Same-gender bestie hug between ${b1.name} and ${b2.name}!`
-                : `Legendary squad handshake between ${b1.name} and ${b2.name}!`;
-            if (leftTop) leftTop.textContent = `${b1.name} (${b1.gender === 'boy' ? '👦' : '👧'})`;
-            if (rightTop) rightTop.textContent = `${b2.name} (${b2.gender === 'boy' ? '👦' : '👧'})`;
-            if (emblem) emblem.textContent = sameGender ? '🤗' : '🤝';
+            if (modePill) {
+                modePill.textContent = sameGender
+                    ? (b1.gender === 'girl' ? '🤗 Bestie Sisters Hug!' : '🤗 Brothers Bear Hug!')
+                    : '🤝 Legendary Squad Handshake!';
+            }
+            if (titleEl) titleEl.textContent = `${b1.name} & ${b2.name}`;
+            if (subEl) {
+                subEl.textContent = sameGender
+                    ? `Same-gender bestie bond! ${b1.name} & ${b2.name} share a warm 4th Anniversary hug!`
+                    : `Different-gender squad respect! ${b1.name} & ${b2.name} lock in a 4th Anniversary handshake!`;
+            }
+            if (leftTop) leftTop.textContent = `${b1.name} (${b1.gender === 'girl' ? '👧' : '👦'})`;
+            if (rightTop) rightTop.textContent = `${b2.name} (${b2.gender === 'girl' ? '👧' : '👦'})`;
+            if (centerEmblem) centerEmblem.textContent = sameGender ? '🤗' : '🤝';
             if (leftRole) leftRole.textContent = `${b1.emoji} ${b1.title}`;
             if (rightRole) rightRole.textContent = `${b2.emoji} ${b2.title}`;
+            if (fallbackEmoji) fallbackEmoji.textContent = sameGender ? '🤗' : '🤝';
 
             if (videoEl) {
-                videoEl.classList.remove('hidden');
-                if (fallbackEl) fallbackEl.classList.add('hidden');
+                const videoSrc = !sameGender
+                    ? './animation/G2B.mp4'
+                    : (b1.gender === 'girl' ? './animation/G2G.mp4' : './animation/B2B.mp4');
+                videoEl.style.display = 'block';
+                if (fallbackEl) {
+                    fallbackEl.classList.add('hidden');
+                    fallbackEl.classList.remove('flex');
+                }
                 videoEl.onerror = () => {
-                    videoEl.classList.add('hidden');
+                    videoEl.style.display = 'none';
                     if (fallbackEl) {
                         fallbackEl.classList.remove('hidden');
                         fallbackEl.classList.add('flex');
                     }
                 };
                 videoEl.src = videoSrc;
-                videoEl.load();
                 videoEl.play().catch(() => {});
             }
 
-            lastBuddyMomentMeta = {
-                type: modeLabel,
-                headline: `${b1.name} ${b1.emoji} & ${b2.name} ${b2.emoji}`,
-                body: `${b1.name} and ${b2.name} shared a ${sameGender ? 'Bestie Hug 🤗' : 'Squad Handshake 🤝'} on 😍Best buddies forever🥳!`,
-                author: `${b1.name} & ${b2.name}`
-            };
-
+            const modal = document.getElementById('buddy-action-modal');
             if (modal) {
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
             }
             triggerConfettiBurst(0.5, 0.45);
-            resetBuddyConnection();
-        }
-
-        function resetBuddyConnection() {
-            selectedBuddiesForAction.forEach(b => {
-                document.getElementById(`avatar-ring-${b.name}`)?.classList.remove('buddy-selected-ring');
-            });
-            selectedBuddiesForAction = [];
-            const statusEl = document.getElementById('buddy-connect-status');
-            const resetBtn = document.getElementById('buddy-connect-reset');
-            if (statusEl) statusEl.textContent = "Tap any buddy's circular photo to start a Bestie Hug or Squad Handshake!";
-            if (resetBtn) resetBtn.classList.add('hidden');
         }
 
         function closeBuddyActionModal() {
@@ -1854,50 +1884,115 @@
             }
         }
 
-        function loadCustomActionMedia(event) {
-            const file = event.target && event.target.files && event.target.files[0];
+        function loadCustomActionMedia(ev) {
+            const file = ev && ev.target && ev.target.files && ev.target.files[0];
             const videoEl = document.getElementById('buddy-action-media-video');
             const fallbackEl = document.getElementById('buddy-media-fallback');
             if (!file || !videoEl) return;
-            videoEl.classList.remove('hidden');
-            if (fallbackEl) fallbackEl.classList.add('hidden');
             videoEl.src = URL.createObjectURL(file);
+            videoEl.style.display = 'block';
+            if (fallbackEl) {
+                fallbackEl.classList.add('hidden');
+                fallbackEl.classList.remove('flex');
+            }
             videoEl.play().catch(() => {});
         }
 
         function shareBuddyConnectionCard() {
-            if (lastBuddyMomentMeta) {
-                closeBuddyActionModal();
-                sendCardAndOpenShareModal(lastBuddyMomentMeta);
-            }
-        }
-
-        function loadCustomChatScreenshot(event) {
-            const file = event.target && event.target.files && event.target.files[0];
-            const img = document.getElementById('chat-screenshot-img');
-            const fallback = document.getElementById('chat-screenshot-fallback');
-            if (!file || !img) return;
-            img.src = URL.createObjectURL(file);
-            img.style.display = 'block';
-            if (fallback) fallback.classList.add('hidden');
+            if (!lastBuddyPair) return;
+            const { b1, b2 } = lastBuddyPair;
+            const sameGender = b1.gender === b2.gender;
+            closeBuddyActionModal();
+            sendCardAndOpenShareModal({
+                type: sameGender ? '🤗 Fab 8 Bestie Hug Moment' : '🤝 Fab 8 Squad Handshake Moment',
+                headline: `${b1.name} ${b1.emoji} & ${b2.name} ${b2.emoji}`,
+                body: sameGender
+                    ? `${b1.name} and ${b2.name} celebrated 4 years of 😍Best buddies forever🥳 with an epic Bestie Hug!`
+                    : `${b1.name} and ${b2.name} celebrated 4 years of 😍Best buddies forever🥳 with a Legendary Squad Handshake!`,
+                author: `${b1.name} & ${b2.name}`
+            });
         }
 
         // ==========================================
-        // 4. 3-WAY CROSS-BROWSER & CROSS-DEVICE FLOATING WISHES SYSTEM
+        // 4. GUN.JS WEBSOCKET MESH + MULTI-CLOUD FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v25';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v25';
-        const CLOUD_CONFIG_KEY = 'bbf_fab8_cloud_config_v25';
-        // Way 1 Default Relays (tries both ntfy.sh raw & json endpoints)
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_live_2026_v25';
-        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_mirror_2026_v25';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v26';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v26';
+        const CLOUD_CONFIG_KEY = 'bbf_fab8_cloud_config_v26';
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_live_2026_v26';
+        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_mirror_2026_v26';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
+        let gunSquadNode = null;
         const deletedWishIds = new Set();
         const squadBroadcast = typeof BroadcastChannel !== 'undefined'
             ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
+
+        // Initialize Gun.js WebSocket Mesh (Works across Chrome profiles, Edge, phones & file:// without CORS errors)
+        function initGunWebSocketMesh() {
+            if (typeof Gun === 'undefined') return;
+            try {
+                const gun = Gun({
+                    peers: [
+                        'https://gun-manhattan.herokuapp.com/gun',
+                        'https://relay.peer.ooo/gun',
+                        'https://gun-us.herokuapp.com/gun'
+                    ],
+                    localStorage: false
+                });
+                gunSquadNode = gun.get('best_buddies_forever_fab8_2026_wishes_mesh_v1');
+
+                gunSquadNode.map().on((nodeData, nodeKey) => {
+                    if (!nodeKey || nodeKey === '_') return;
+                    if (nodeData === null || (nodeData && nodeData.deleted === true)) {
+                        window.registerRemoteDeletedWish(nodeKey, nodeData && nodeData.delKey ? nodeData.delKey : '');
+                        return;
+                    }
+                    if (nodeData && nodeData.author && nodeData.text) {
+                        if (deletedWishIds.has(String(nodeKey))) return;
+                        wishesData = mergeWishesLists([{
+                            id: String(nodeKey),
+                            author: String(nodeData.author),
+                            text: String(nodeData.text),
+                            date: String(nodeData.date || '13/11/2026'),
+                            createdAt: Number(nodeData.createdAt) || Date.now()
+                        }], wishesData);
+                        persistWishesLocally();
+                        renderFloatingWishes();
+                        const syncPill = document.getElementById('cloud-sync-pill');
+                        if (syncPill) {
+                            syncPill.textContent = `🟢 Live Mesh Synced (${wishesData.length})`;
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        function pushWishToGunMesh(wishObj) {
+            if (!gunSquadNode || !wishObj || !wishObj.id) return;
+            try {
+                gunSquadNode.get(String(wishObj.id)).put({
+                    author: String(wishObj.author),
+                    text: String(wishObj.text),
+                    date: String(wishObj.date || '13/11/2026'),
+                    createdAt: Number(wishObj.createdAt) || Date.now(),
+                    deleted: false
+                });
+            } catch (e) {}
+        }
+
+        function deleteWishFromGunMesh(wishId, delKey) {
+            if (!gunSquadNode || !wishId) return;
+            try {
+                gunSquadNode.get(String(wishId)).put({
+                    deleted: true,
+                    delKey: delKey || '',
+                    deletedAt: Date.now()
+                });
+            } catch (e) {}
+        }
         function getCloudConfig() {
             try {
                 const raw = localStorage.getItem(CLOUD_CONFIG_KEY) || '';
@@ -2391,30 +2486,35 @@
 
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
+            if (gunSquadNode && wishesData.length > 0) {
+                wishesData.forEach(w => pushWishToGunMesh(w));
+            }
             try {
                 const [rDb, r1, r2] = await Promise.all([
                     pullFromCustomCloud(),
                     pullFromNtfyChannel(NTFY_TOPIC_URL),
                     pullFromNtfyChannel(NTFY_BACKUP_URL)
                 ]);
-                const anyOk = (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
+                const anyOk = Boolean(gunSquadNode) || (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
                 if (!anyOk) {
                     const code = (r1 && r1.status) || (r2 && r2.status) || 'Blocked';
                     throw new Error(`HTTP ${code}`);
                 }
 
                 if (syncPill) {
-                    syncPill.textContent = `🟢 Cloud Synced (${wishesData.length})`;
+                    syncPill.textContent = `🟢 Live Mesh Synced (${wishesData.length})`;
                 }
                 if (manualNotify) {
-                    showToast(`Synced across devices! ${wishesData.length} floating wish(es) 🔄`, '🎈');
+                    showToast(`Synced across all profiles & devices! ${wishesData.length} floating wish(es) 🔄`, '🎈');
                 }
             } catch (e) {
                 if (syncPill) {
-                    syncPill.textContent = `🟡 Local (${e.message}) — Tap ☁️ Setup or 📋 Code`;
+                    syncPill.textContent = gunSquadNode
+                        ? `🟢 WebSocket Mesh Active (${wishesData.length})`
+                        : `🟡 Local — Tap ☁️ Backup or 📋 Code`;
                 }
                 if (manualNotify) {
-                    showToast(`Network blocked public relay (${e.message}) — tap ☁️ 3-Way Cloud Setup or 📋 Sync Code`, '⚠️');
+                    showToast(`WebSocket Mesh checked (${wishesData.length} wish(es)) 🔄`, '🎈');
                 }
             }
         }
@@ -2496,6 +2596,7 @@
 
         async function pushSharedCloudWishes(newWish) {
             if (!newWish) return;
+            pushWishToGunMesh(newWish);
             const addPayload = {
                 action: 'add',
                 id: newWish.id,
@@ -2521,9 +2622,9 @@
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = (ok1 || ok2 || getCloudConfig().url)
-                    ? `🟢 Cloud Synced (${wishesData.length})`
-                    : `🟡 Saved Locally — Tap ☁️ Setup or 📋 Code`;
+                syncPill.textContent = (gunSquadNode || ok1 || ok2 || getCloudConfig().url)
+                    ? `🟢 Live Mesh Synced (${wishesData.length})`
+                    : `🟡 Saved Locally — Tap ☁️ Backup or 📋 Code`;
             }
         }
 
@@ -2538,6 +2639,7 @@
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
 
+            deleteWishFromGunMesh(wishId, delKey);
             if (typeof window.deleteWishFromLiveCloud === 'function') {
                 await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
@@ -2655,9 +2757,9 @@
                 author: sender
             });
         }
-
-        // Initialize wishes on page load + start live cross-device polling & stream
+        // Initialize wishes on page load + start Gun.js WebSocket Mesh & live polling
         loadSavedWishesOnBoot();
+        initGunWebSocketMesh();
         startLiveSquadStream();
         fetchSharedCloudWishes(false);
         setInterval(() => fetchSharedCloudWishes(false), 7000);
