@@ -1179,8 +1179,11 @@
                     <button type="button" onclick="fetchSharedCloudWishes(true)" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 text-[11px] font-bold transition cursor-pointer">
                         🔄 Sync Now
                     </button>
-                    <button type="button" onclick="configureCustomCloudDb()" class="px-2.5 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/35 border border-purple-400/40 text-purple-200 text-[11px] font-bold transition cursor-pointer" title="Optional: Set your own Firebase Realtime DB URL">
-                        ⚙️ Cloud URL
+                    <button type="button" onclick="openCloudSetupGuide()" class="px-2.5 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/35 border border-purple-400/40 text-purple-200 text-[11px] font-bold transition cursor-pointer" title="Connect free Firebase / Supabase / JSONBin for 100% permanent cross-device sync">
+                        ☁️ 3-Way Cloud Setup
+                    </button>
+                    <button type="button" onclick="openSyncCodeModal()" class="px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/40 text-amber-200 text-[11px] font-bold transition cursor-pointer" title="Transfer wishes between Chrome, Edge & phones even offline">
+                        📋 Sync Code
                     </button>
                 </div>
 
@@ -1211,6 +1214,34 @@
                         <span id="wishes-board-counter" class="text-amber-300">0 / 8 Buddies Floated</span>
                     </div>
                     <div id="wishes-list" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- Interactive 4th Anniversary & Gopi Birthday Cake -->
+                <div class="glass-dark rounded-3xl p-6 sm:p-8 text-center shadow-2xl border-amber-400/35 mb-6">
+                    <span class="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-bold">🎂 Make a Squad Wish</span>
+                    <h3 class="font-display text-2xl font-bold text-white mt-2">4-Year Celebration Cake 🥳</h3>
+                    <p id="cake-status-text" class="text-xs sm:text-sm text-slate-300 mt-1 mb-5">
+                        Tap the cake below to blow out all 4 candles! 🌬️
+                    </p>
+                    <div onclick="blowOutCandles()" class="inline-block cursor-pointer select-none group p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition">
+                        <div class="flex justify-center gap-5 mb-1">
+                            <div class="flex flex-col items-center"><span class="flame text-xl">🔥</span><div class="w-2 h-6 bg-pink-400 rounded-t"></div></div>
+                            <div class="flex flex-col items-center"><span class="flame text-xl">🔥</span><div class="w-2 h-6 bg-cyan-400 rounded-t"></div></div>
+                            <div class="flex flex-col items-center"><span class="flame text-xl">🔥</span><div class="w-2 h-6 bg-amber-400 rounded-t"></div></div>
+                            <div class="flex flex-col items-center"><span class="flame text-xl">🔥</span><div class="w-2 h-6 bg-purple-400 rounded-t"></div></div>
+                        </div>
+                        <div class="w-44 h-10 mx-auto rounded-t-xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-400 flex items-center justify-center text-xs font-extrabold text-white shadow">
+                            FAB 8 • 4 YEARS
+                        </div>
+                        <div class="w-52 h-11 mx-auto rounded-b-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center text-xs font-bold text-amber-200 shadow-lg">
+                            😍Best buddies forever🥳
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="button" onclick="relightCandles()" class="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-xs font-bold text-slate-200 transition cursor-pointer">
+                            🕯️ Relight Candles
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Squad Superlative Spinner -->
@@ -1642,334 +1673,158 @@
 
     <script>
         // ==========================================
-        // 1. CONFETTI OVERLAY & TOAST NOTIFICATIONS
+        // 1. SQUAD ROSTER, CONFETTI, TOAST & AVATAR HUG/HANDSHAKE STAGE
         // ==========================================
-        const confettiCanvas = document.getElementById('confetti-overlay-canvas');
-        const confettiCtx = confettiCanvas ? confettiCanvas.getContext('2d') : null;
-        let confettiPieces = [];
-        let confettiAnimating = false;
+        const fab8Roster = [
+            { name: 'Gowri', gender: 'girl', emoji: '🌪️', title: 'The chaos cordinator' },
+            { name: 'Sai', gender: 'boy', emoji: '🗺️', title: 'Trip planner' },
+            { name: 'Shashi', gender: 'girl', emoji: '🎙️', title: 'Voice note podcaster' },
+            { name: 'Gopi', gender: 'boy', emoji: '😂', title: 'Meme dealer' },
+            { name: 'Alisha', gender: 'girl', emoji: '🔥', title: 'Hype machine' },
+            { name: 'Mohan', gender: 'boy', emoji: '⏳', title: 'Late replier' },
+            { name: 'Minni', gender: 'girl', emoji: '🌙', title: 'Midnight philosopher' },
+            { name: 'Yuvaraj', gender: 'boy', emoji: '🍔', title: 'Food critic' }
+        ];
 
-        function resizeConfettiCanvas() {
-            if (!confettiCanvas) return;
-            confettiCanvas.width = window.innerWidth;
-            confettiCanvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeConfettiCanvas);
-        resizeConfettiCanvas();
-
-        function triggerConfettiBurst(originXRatio = 0.5, originYRatio = 0.45) {
-            if (!confettiCanvas || !confettiCtx) return;
-            const colors = ['#ec4899', '#a855f7', '#38bdf8', '#fde047', '#34d399', '#fb7185'];
-            const originX = confettiCanvas.width * originXRatio;
-            const originY = confettiCanvas.height * originYRatio;
-
-            for (let i = 0; i < 65; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 3 + Math.random() * 8;
-                confettiPieces.push({
-                    x: originX,
-                    y: originY,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed - 3,
-                    size: 5 + Math.random() * 6,
-                    color: colors[Math.floor(Math.random() * colors.length)],
-                    rotation: Math.random() * 360,
-                    vRot: (Math.random() - 0.5) * 12,
-                    alpha: 1
-                });
-            }
-
-            if (!confettiAnimating) {
-                confettiAnimating = true;
-                animateConfetti();
-            }
-        }
-
-        function animateConfetti() {
-            if (!confettiCtx || !confettiCanvas) return;
-            confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-            confettiPieces.forEach(p => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.22;
-                p.rotation += p.vRot;
-                p.alpha -= 0.014;
-                confettiCtx.save();
-                confettiCtx.translate(p.x, p.y);
-                confettiCtx.rotate((p.rotation * Math.PI) / 180);
-                confettiCtx.globalAlpha = Math.max(0, p.alpha);
-                confettiCtx.fillStyle = p.color;
-                confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65);
-                confettiCtx.restore();
-            });
-            confettiPieces = confettiPieces.filter(p => p.alpha > 0 && p.y < confettiCanvas.height + 30);
-            if (confettiPieces.length > 0) {
-                requestAnimationFrame(animateConfetti);
-            } else {
-                confettiAnimating = false;
-            }
-        }
-
-        let toastTimer = null;
-        function showToast(message, icon = '🎉') {
+        function showToast(msg, icon = '🎉') {
             const toast = document.getElementById('toast');
-            const msgEl = document.getElementById('toast-msg');
-            const iconEl = document.getElementById('toast-icon');
-            if (!toast || !msgEl || !iconEl) return;
-            msgEl.textContent = message;
-            iconEl.textContent = icon;
+            const toastMsg = document.getElementById('toast-msg');
+            const toastIcon = document.getElementById('toast-icon');
+            if (!toast) return;
+            if (toastMsg) toastMsg.textContent = msg;
+            if (toastIcon) toastIcon.textContent = icon;
             toast.classList.remove('translate-y-24', 'opacity-0');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => {
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => {
                 toast.classList.add('translate-y-24', 'opacity-0');
             }, 3400);
         }
 
-        // ==========================================
-        // 2. FAB 8 ROSTER, FILTER & HUG/HANDSHAKE SELECTION
-        // ==========================================
-        const fab8Roster = [
-            { name: 'Gowri', gender: 'girl', title: 'The chaos cordinator', emoji: '🌪️' },
-            { name: 'Sai', gender: 'boy', title: 'Trip planner', emoji: '🗺️' },
-            { name: 'Shashi', gender: 'girl', title: 'Voice note podcaster', emoji: '🎙️' },
-            { name: 'Gopi', gender: 'boy', title: 'Meme dealer', emoji: '😂' },
-            { name: 'Alisha', gender: 'girl', title: 'Hype machine', emoji: '🔥' },
-            { name: 'Mohan', gender: 'boy', title: 'Late replier', emoji: '⏳' },
-            { name: 'Minni', gender: 'girl', title: 'Midnight philosopher', emoji: '🌙' },
-            { name: 'Yuvaraj', gender: 'boy', title: 'Food critic', emoji: '🍔' }
-        ];
+        function triggerConfettiBurst(originX = 0.5, originY = 0.45) {
+            const canvas = document.getElementById('confetti-overlay-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const colors = ['#ff0080', '#38bdf8', '#fde047', '#a855f7', '#34d399', '#fb7185'];
+            const particles = Array.from({ length: 85 }, () => ({
+                x: canvas.width * originX,
+                y: canvas.height * originY,
+                vx: (Math.random() - 0.5) * 14,
+                vy: (Math.random() - 0.85) * 14,
+                size: 5 + Math.random() * 6,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                alpha: 1
+            }));
+            function step() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                let alive = false;
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.35;
+                    p.alpha -= 0.016;
+                    if (p.alpha > 0) {
+                        alive = true;
+                        ctx.globalAlpha = p.alpha;
+                        ctx.fillStyle = p.color;
+                        ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
+                    }
+                });
+                ctx.globalAlpha = 1;
+                if (alive) requestAnimationFrame(step);
+                else ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            requestAnimationFrame(step);
+        }
 
-        function filterSquad(category) {
+        function filterSquad(gender) {
             document.querySelectorAll('.filter-btn').forEach(btn => {
-                const isMatch = btn.dataset.filter === category;
-                btn.classList.toggle('neon-animated-bg', isMatch);
-                btn.classList.toggle('text-white', isMatch);
-                btn.classList.toggle('bg-[#141033]', !isMatch);
+                const active = btn.dataset.filter === gender;
+                btn.className = active
+                    ? 'filter-btn active px-4 py-2 rounded-full text-xs sm:text-sm font-bold neon-animated-bg text-white shadow-md transition cursor-pointer'
+                    : 'filter-btn px-4 py-2 rounded-full text-xs sm:text-sm font-bold bg-[#141033] text-slate-300 border border-white/15 hover:bg-white/10 transition cursor-pointer';
             });
             document.querySelectorAll('#squad-grid .flip-card').forEach(card => {
-                const match = category === 'all' || card.dataset.gender === category;
-                card.style.display = match ? 'block' : 'none';
+                card.style.display = (gender === 'all' || card.dataset.gender === gender) ? '' : 'none';
             });
         }
 
-        let selectedFirstBuddy = null;
-        let lastBuddyInteraction = null;
-
-        function clearAllAvatarRings() {
-            fab8Roster.forEach(b => {
-                const ring = document.getElementById(`avatar-ring-${b.name}`);
-                if (ring) ring.classList.remove('buddy-selected-ring');
-            });
-        }
-
-        function resetBuddyConnection() {
-            selectedFirstBuddy = null;
-            clearAllAvatarRings();
-            const statusEl = document.getElementById('buddy-connect-status');
-            const resetBtn = document.getElementById('buddy-connect-reset');
-            if (statusEl) {
-                statusEl.innerHTML = "Tap any buddy's circular photo to start a Bestie Hug or Squad Handshake!";
-            }
-            if (resetBtn) resetBtn.classList.add('hidden');
-        }
+        let selectedBuddiesForAction = [];
+        let lastBuddyMomentMeta = null;
 
         function selectBuddyForAction(name) {
             const buddy = fab8Roster.find(b => b.name === name);
             if (!buddy) return;
-
             const statusEl = document.getElementById('buddy-connect-status');
             const resetBtn = document.getElementById('buddy-connect-reset');
 
-            if (!selectedFirstBuddy) {
-                selectedFirstBuddy = buddy;
-                clearAllAvatarRings();
-                document.getElementById(`avatar-ring-${buddy.name}`)?.classList.add('buddy-selected-ring');
+            if (selectedBuddiesForAction.length === 1 && selectedBuddiesForAction[0].name === buddy.name) {
+                resetBuddyConnection();
+                return;
+            }
+            selectedBuddiesForAction.push(buddy);
+            const ring = document.getElementById(`avatar-ring-${buddy.name}`);
+            if (ring) ring.classList.add('buddy-selected-ring');
+            if (resetBtn) resetBtn.classList.remove('hidden');
+
+            if (selectedBuddiesForAction.length === 1) {
                 if (statusEl) {
-                    statusEl.innerHTML = `<strong class="text-white">${buddy.name} ${buddy.emoji}</strong> selected! Now tap any 2nd buddy's photo to Hug or Handshake!`;
+                    statusEl.textContent = `Selected ${buddy.name} ${buddy.emoji} — now tap a 2nd buddy to Hug or Handshake!`;
                 }
-                if (resetBtn) resetBtn.classList.remove('hidden');
-                showToast(`Selected ${buddy.name}! Tap a 2nd buddy's avatar 👇`, buddy.emoji);
                 return;
             }
 
-            if (selectedFirstBuddy.name === buddy.name) {
-                resetBuddyConnection();
-                showToast(`Cleared ${buddy.name}`, '✨');
-                return;
-            }
+            const [b1, b2] = selectedBuddiesForAction;
+            const sameGender = b1.gender === b2.gender;
+            const videoSrc = sameGender ? (b1.gender === 'boy' ? './animation/B2B.mp4' : './animation/G2G.mp4') : './animation/G2B.mp4';
+            const modeLabel = sameGender
+                ? (b1.gender === 'boy' ? '🤗 Brothers Bestie Hug (B2B)!' : '🤗 Sisters Bestie Hug (G2G)!')
+                : '🤝 Squad Bestie Handshake (B2G)!';
 
-            const first = selectedFirstBuddy;
-            const second = buddy;
-            const isSameGender = first.gender === second.gender;
-
-            document.getElementById(`avatar-ring-${second.name}`)?.classList.add('buddy-selected-ring');
-            launchBuddyActionStage(first, second, isSameGender);
-
-            setTimeout(() => {
-                resetBuddyConnection();
-            }, 600);
-        }
-
-        // ==========================================
-        // 2B. VIDEO STAGE FOR B2B (2 BOYS HUG), G2G (2 GIRLS HUG) & G2B (BOY-GIRL HANDSHAKE)
-        // ==========================================
-        const customActionMediaOverrides = {};
-
-        function getActionMediaConfig(first, second, isSameGender) {
-            if (isSameGender && first.gender === 'boy') {
-                return {
-                    key: 'B2B',
-                    videoCandidates: [
-                        './animation/B2B.mp4',
-                        'animation/B2B.mp4',
-                        './animation/b2b.mp4'
-                    ],
-                    fallbackEmoji: '👦🤗👦',
-                    hint: 'Expected ./animation/B2B.mp4 for 2 Boys Hugging!'
-                };
-            }
-            if (isSameGender && first.gender === 'girl') {
-                return {
-                    key: 'G2G',
-                    videoCandidates: [
-                        './animation/G2G.mp4',
-                        'animation/G2G.mp4',
-                        './animation/g2g.mp4'
-                    ],
-                    fallbackEmoji: '👧🤗👧',
-                    hint: 'Expected ./animation/G2G.mp4 for 2 Girls Hugging!'
-                };
-            }
-            return {
-                key: 'G2B',
-                videoCandidates: [
-                    './animation/G2B.mp4',
-                    'animation/G2B.mp4',
-                    './animation/B2G.mp4',
-                    './animation/g2b.mp4'
-                ],
-                fallbackEmoji: '👦🤝👧',
-                hint: 'Expected ./animation/G2B.mp4 for Boy & Girl Handshaking!'
-            };
-        }
-
-        let currentActionMediaKey = 'B2B';
-
-        function showActionVideo(srcUrl) {
-            const videoEl = document.getElementById('buddy-action-media-video');
-            const fallbackBox = document.getElementById('buddy-media-fallback');
-            if (!videoEl) return;
-
-            if (fallbackBox) {
-                fallbackBox.classList.add('hidden');
-                fallbackBox.classList.remove('flex');
-            }
-            videoEl.classList.remove('hidden');
-            videoEl.src = srcUrl;
-            videoEl.muted = true;
-            videoEl.load();
-            videoEl.play().catch(() => {});
-        }
-
-        function setBuddyActionMedia(first, second, isSameGender) {
-            const videoEl = document.getElementById('buddy-action-media-video');
-            const fallbackBox = document.getElementById('buddy-media-fallback');
-            const fallbackEmoji = document.getElementById('buddy-media-fallback-emoji');
-            const fallbackHint = document.getElementById('buddy-media-fallback-hint');
-
-            const cfg = getActionMediaConfig(first, second, isSameGender);
-            currentActionMediaKey = cfg.key;
-
-            if (fallbackEmoji) fallbackEmoji.textContent = cfg.fallbackEmoji;
-            if (fallbackHint) fallbackHint.textContent = cfg.hint;
-
-            const override = customActionMediaOverrides[cfg.key];
-            if (override) {
-                showActionVideo(override.url);
-                return;
-            }
-
-            if (!videoEl) return;
-
-            let vidStep = 0;
-            videoEl.onerror = function() {
-                if (vidStep < cfg.videoCandidates.length) {
-                    videoEl.src = cfg.videoCandidates[vidStep++];
-                    videoEl.load();
-                    videoEl.play().catch(() => {});
-                } else {
-                    videoEl.onerror = null;
-                    videoEl.classList.add('hidden');
-                    if (fallbackBox) {
-                        fallbackBox.classList.remove('hidden');
-                        fallbackBox.classList.add('flex');
-                    }
-                }
-            };
-            showActionVideo(cfg.videoCandidates[vidStep++]);
-        }
-
-        function loadCustomActionMedia(event) {
-            const file = event.target.files && event.target.files[0];
-            if (!file) return;
-            const objectUrl = URL.createObjectURL(file);
-
-            customActionMediaOverrides[currentActionMediaKey] = {
-                type: 'video',
-                url: objectUrl
-            };
-
-            showActionVideo(objectUrl);
-            showToast(`Custom video loaded for ${currentActionMediaKey}! 🎬`, '🥳');
-        }
-
-        function launchBuddyActionStage(first, second, isSameGender) {
             const modal = document.getElementById('buddy-action-modal');
             const pill = document.getElementById('action-mode-pill');
             const title = document.getElementById('action-stage-title');
             const sub = document.getElementById('action-stage-subtitle');
-            const leftTopName = document.getElementById('stage-left-top-name');
-            const rightTopName = document.getElementById('stage-right-top-name');
-            const leftName = document.getElementById('stage-left-name');
-            const rightName = document.getElementById('stage-right-name');
-            const centerEmblem = document.getElementById('stage-center-emblem');
+            const leftTop = document.getElementById('stage-left-top-name');
+            const rightTop = document.getElementById('stage-right-top-name');
+            const emblem = document.getElementById('stage-center-emblem');
+            const leftRole = document.getElementById('stage-left-name');
+            const rightRole = document.getElementById('stage-right-name');
+            const videoEl = document.getElementById('buddy-action-media-video');
+            const fallbackEl = document.getElementById('buddy-media-fallback');
 
-            const p1 = document.getElementById('stage-particle-1');
-            const p2 = document.getElementById('stage-particle-2');
-            const p3 = document.getElementById('stage-particle-3');
+            if (pill) pill.textContent = modeLabel;
+            if (title) title.textContent = `${b1.name} & ${b2.name}`;
+            if (sub) sub.textContent = sameGender
+                ? `Same-gender bestie hug between ${b1.name} and ${b2.name}!`
+                : `Legendary squad handshake between ${b1.name} and ${b2.name}!`;
+            if (leftTop) leftTop.textContent = `${b1.name} (${b1.gender === 'boy' ? '👦' : '👧'})`;
+            if (rightTop) rightTop.textContent = `${b2.name} (${b2.gender === 'boy' ? '👦' : '👧'})`;
+            if (emblem) emblem.textContent = sameGender ? '🤗' : '🤝';
+            if (leftRole) leftRole.textContent = `${b1.emoji} ${b1.title}`;
+            if (rightRole) rightRole.textContent = `${b2.emoji} ${b2.title}`;
 
-            if (leftTopName) leftTopName.textContent = `${first.name} (${first.gender === 'girl' ? '👧' : '👦'})`;
-            if (rightTopName) rightTopName.textContent = `${second.name} (${second.gender === 'girl' ? '👧' : '👦'})`;
-            if (leftName) leftName.textContent = `${first.emoji} ${first.title}`;
-            if (rightName) rightName.textContent = `${second.emoji} ${second.title}`;
-
-            if (isSameGender) {
-                if (pill) pill.textContent = first.gender === 'boy' ? '👦🤗👦 2 Boys Bestie Hug!' : '👧🤗👧 2 Girls Bestie Hug!';
-                if (title) title.textContent = `${first.name} 🤗 ${second.name}`;
-                if (sub) sub.textContent = `Same squad energy! ${first.name} and ${second.name} are sharing a legendary 4th Anniversary bestie hug! 💖`;
-                if (centerEmblem) centerEmblem.textContent = '🤗💖';
-                if (p1) p1.textContent = '💖';
-                if (p2) p2.textContent = '🤗';
-                if (p3) p3.textContent = '💕';
-            } else {
-                if (pill) pill.textContent = '👦🤝👧 Squad Respect Handshake!';
-                if (title) title.textContent = `${first.name} 🤝 ${second.name}`;
-                if (sub) sub.textContent = `4 Girls + 4 Boys unity! ${first.name} and ${second.name} are sharing an epic 4th Anniversary handshake! ✨`;
-                if (centerEmblem) centerEmblem.textContent = '🤝✨';
-                if (p1) p1.textContent = '✨';
-                if (p2) p2.textContent = '🤝';
-                if (p3) p3.textContent = '🌟';
+            if (videoEl) {
+                videoEl.classList.remove('hidden');
+                if (fallbackEl) fallbackEl.classList.add('hidden');
+                videoEl.onerror = () => {
+                    videoEl.classList.add('hidden');
+                    if (fallbackEl) {
+                        fallbackEl.classList.remove('hidden');
+                        fallbackEl.classList.add('flex');
+                    }
+                };
+                videoEl.src = videoSrc;
+                videoEl.load();
+                videoEl.play().catch(() => {});
             }
 
-            setBuddyActionMedia(first, second, isSameGender);
-
-            lastBuddyInteraction = {
-                type: isSameGender ? '🤗 Bestie Hug Moment' : '🤝 Squad Handshake Moment',
-                headline: isSameGender ? `${first.name} 🤗 ${second.name} Bestie Hug!` : `${first.name} 🤝 ${second.name} Squad Handshake!`,
-                body: isSameGender
-                    ? `${first.name} (${first.title}) & ${second.name} (${second.title}) shared a 4th Anniversary bestie hug on 😍Best buddies forever🥳!`
-                    : `${first.name} (${first.title}) & ${second.name} (${second.title}) shared a legendary 4th Anniversary handshake on 😍Best buddies forever🥳!`,
-                author: `${first.name} & ${second.name}`
+            lastBuddyMomentMeta = {
+                type: modeLabel,
+                headline: `${b1.name} ${b1.emoji} & ${b2.name} ${b2.emoji}`,
+                body: `${b1.name} and ${b2.name} shared a ${sameGender ? 'Bestie Hug 🤗' : 'Squad Handshake 🤝'} on 😍Best buddies forever🥳!`,
+                author: `${b1.name} & ${b2.name}`
             };
 
             if (modal) {
@@ -1977,53 +1832,65 @@
                 modal.classList.add('flex');
             }
             triggerConfettiBurst(0.5, 0.45);
+            resetBuddyConnection();
+        }
+
+        function resetBuddyConnection() {
+            selectedBuddiesForAction.forEach(b => {
+                document.getElementById(`avatar-ring-${b.name}`)?.classList.remove('buddy-selected-ring');
+            });
+            selectedBuddiesForAction = [];
+            const statusEl = document.getElementById('buddy-connect-status');
+            const resetBtn = document.getElementById('buddy-connect-reset');
+            if (statusEl) statusEl.textContent = "Tap any buddy's circular photo to start a Bestie Hug or Squad Handshake!";
+            if (resetBtn) resetBtn.classList.add('hidden');
         }
 
         function closeBuddyActionModal() {
             const modal = document.getElementById('buddy-action-modal');
-            const videoEl = document.getElementById('buddy-action-media-video');
-            if (videoEl) videoEl.pause();
             if (modal) {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
             }
         }
 
+        function loadCustomActionMedia(event) {
+            const file = event.target && event.target.files && event.target.files[0];
+            const videoEl = document.getElementById('buddy-action-media-video');
+            const fallbackEl = document.getElementById('buddy-media-fallback');
+            if (!file || !videoEl) return;
+            videoEl.classList.remove('hidden');
+            if (fallbackEl) fallbackEl.classList.add('hidden');
+            videoEl.src = URL.createObjectURL(file);
+            videoEl.play().catch(() => {});
+        }
+
         function shareBuddyConnectionCard() {
-            if (!lastBuddyInteraction) return;
-            closeBuddyActionModal();
-            sendCardAndOpenShareModal(lastBuddyInteraction);
+            if (lastBuddyMomentMeta) {
+                closeBuddyActionModal();
+                sendCardAndOpenShareModal(lastBuddyMomentMeta);
+            }
         }
 
-        // ==========================================
-        // 3. CUSTOM WHATSAPP CHAT SCREENSHOT SWAPPER
-        // ==========================================
         function loadCustomChatScreenshot(event) {
-            const file = event.target.files && event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = document.getElementById('chat-screenshot-img');
-                const fallback = document.getElementById('chat-screenshot-fallback');
-                if (img) {
-                    img.src = e.target.result;
-                    img.style.display = 'block';
-                }
-                if (fallback) fallback.classList.add('hidden');
-                showToast('WhatsApp screenshot updated! 📸', '💬');
-            };
-            reader.readAsDataURL(file);
+            const file = event.target && event.target.files && event.target.files[0];
+            const img = document.getElementById('chat-screenshot-img');
+            const fallback = document.getElementById('chat-screenshot-fallback');
+            if (!file || !img) return;
+            img.src = URL.createObjectURL(file);
+            img.style.display = 'block';
+            if (fallback) fallback.classList.add('hidden');
         }
 
         // ==========================================
-        // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
+        // 4. 3-WAY CROSS-BROWSER & CROSS-DEVICE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v22';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v22';
-        const CUSTOM_RTDB_KEY = 'bbf_fab8_custom_rtdb_url_v22';
-        // Built-in CORS-enabled public cloud channels (using URL-safe Base64 payloads so ntfy.sh never mangles JSON)
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_live_2026_v22';
-        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_mirror_2026_v22';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v25';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v25';
+        const CLOUD_CONFIG_KEY = 'bbf_fab8_cloud_config_v25';
+        // Way 1 Default Relays (tries both ntfy.sh raw & json endpoints)
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_live_2026_v25';
+        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_mirror_2026_v25';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
@@ -2031,13 +1898,125 @@
         const squadBroadcast = typeof BroadcastChannel !== 'undefined'
             ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
+        function getCloudConfig() {
+            try {
+                const raw = localStorage.getItem(CLOUD_CONFIG_KEY) || '';
+                if (!raw) return { provider: 'auto', url: '', key: '' };
+                if (raw.startsWith('{')) return JSON.parse(raw);
+                return { provider: 'firebase', url: raw.trim().replace(/\/+$/, ''), key: '' };
+            } catch (e) {
+                return { provider: 'auto', url: '', key: '' };
+            }
+        }
+
+        function openCloudSetupGuide() {
+            const cfg = getCloudConfig();
+            const modalId = 'custom-cloud-db-modal';
+            let modal = document.getElementById(modalId);
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'fixed inset-0 z-[115] flex items-center justify-center bg-black/80 backdrop-blur-md p-4';
+                modal.innerHTML = `
+                    <div class="bg-[#141038] border border-purple-400/50 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-white">
+                        <h3 class="font-display text-xl font-bold mb-1">☁️ 3-Way Cross-Device Cloud Sync</h3>
+                        <p class="text-xs text-slate-300 mb-3 leading-relaxed">
+                            Browser security blocks local files (<code class="text-amber-300">file://</code>) from sharing storage across Chrome, Edge, and phones unless connected to a free cloud database URL. Choose any option below:
+                        </p>
+                        <div class="space-y-3 mb-4 text-xs">
+                            <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                                <div class="font-bold text-amber-300 mb-1">Option A: Free Firebase Realtime Database (Recommended — 30 sec)</div>
+                                <p class="text-slate-300">Create a free Firebase Realtime DB (Test Mode) and paste its URL (e.g. <code class="text-cyan-300">https://your-app-default-rtdb.firebaseio.com</code>):</p>
+                            </div>
+                            <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                                <div class="font-bold text-pink-300 mb-1">Option B: JSONBin.io Bin URL + Master/Access Key</div>
+                                <p class="text-slate-300">Paste <code class="text-cyan-300">https://api.jsonbin.io/v3/b/YOUR_BIN_ID</code> and your X-Access-Key below:</p>
+                            </div>
+                        </div>
+                        <input id="custom-rtdb-input" type="url" placeholder="Cloud URL (Firebase .firebaseio.com OR JSONBin /v3/b/...)" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 text-xs text-white mb-2.5 focus:outline-none focus:ring-2 focus:ring-pink-400">
+                        <input id="custom-rtdb-key" type="text" placeholder="Optional API Key (Required only for JSONBin X-Access-Key)" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 text-xs text-white mb-4 focus:outline-none focus:ring-2 focus:ring-pink-400">
+                        <div class="flex justify-end gap-2">
+                            <button type="button" id="custom-rtdb-cancel" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold cursor-pointer">Close</button>
+                            <button type="button" id="custom-rtdb-save" class="px-4 py-2 rounded-xl neon-animated-bg text-xs font-extrabold cursor-pointer">Save & Sync All Devices</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                modal.querySelector('#custom-rtdb-cancel').onclick = () => modal.remove();
+                modal.querySelector('#custom-rtdb-save').onclick = () => {
+                    const urlVal = modal.querySelector('#custom-rtdb-input').value.trim().replace(/\/+$/, '');
+                    const keyVal = modal.querySelector('#custom-rtdb-key').value.trim();
+                    const provider = urlVal.includes('jsonbin.io') ? 'jsonbin' : (urlVal ? 'firebase' : 'auto');
+                    try {
+                        if (urlVal) {
+                            localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify({ provider, url: urlVal, key: keyVal }));
+                        } else {
+                            localStorage.removeItem(CLOUD_CONFIG_KEY);
+                        }
+                    } catch (e) {}
+                    modal.remove();
+                    pushAllWishesSnapshot();
+                    fetchSharedCloudWishes(true);
+                };
+            }
+            modal.querySelector('#custom-rtdb-input').value = cfg.url || '';
+            modal.querySelector('#custom-rtdb-key').value = cfg.key || '';
+        }
+
+        function openSyncCodeModal() {
+            persistWishesLocally();
+            const payload = encodePacketBase64({
+                action: 'snapshot',
+                wishes: wishesData.slice(0, 20),
+                deletedIds: Array.from(deletedWishIds).slice(-80)
+            });
+            const modalId = 'sync-code-modal';
+            let modal = document.getElementById(modalId);
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'fixed inset-0 z-[115] flex items-center justify-center bg-black/80 backdrop-blur-md p-4';
+                modal.innerHTML = `
+                    <div class="bg-[#141038] border border-amber-400/50 rounded-3xl max-w-md w-full p-6 shadow-2xl text-white">
+                        <h3 class="font-display text-xl font-bold mb-1">📋 Offline / Cross-Browser Sync Code</h3>
+                        <p class="text-xs text-slate-300 mb-3">Copy this Sync Code in one browser/phone and paste it into any other browser (Edge, Firefox, another Chrome profile) to load all floating wishes immediately:</p>
+                        <textarea id="sync-code-textarea" rows="4" class="w-full p-3 rounded-xl bg-black/40 border border-white/20 text-[11px] font-mono text-amber-200 mb-3 focus:outline-none"></textarea>
+                        <div class="flex flex-wrap justify-between gap-2">
+                            <button type="button" id="sync-code-copy-btn" class="px-4 py-2 rounded-xl bg-amber-400 text-slate-950 text-xs font-extrabold cursor-pointer">📋 Copy Code</button>
+                            <button type="button" id="sync-code-import-btn" class="px-4 py-2 rounded-xl bg-emerald-500 text-white text-xs font-extrabold cursor-pointer">📥 Import Pasted Code</button>
+                            <button type="button" id="sync-code-close-btn" class="px-3 py-2 rounded-xl bg-white/10 text-xs font-bold cursor-pointer">Close</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                modal.querySelector('#sync-code-close-btn').onclick = () => modal.remove();
+                modal.querySelector('#sync-code-copy-btn').onclick = () => {
+                    const ta = modal.querySelector('#sync-code-textarea');
+                    ta.select();
+                    try { document.execCommand('copy'); } catch (e) {}
+                    showToast('Sync Code copied! Paste it in your other browser 📋', '🎈');
+                };
+                modal.querySelector('#sync-code-import-btn').onclick = () => {
+                    const raw = modal.querySelector('#sync-code-textarea').value.trim();
+                    const decoded = decodePacketBase64(raw);
+                    if (decoded && Array.isArray(decoded.wishes)) {
+                        handleIncomingCloudPacket(decoded);
+                        modal.remove();
+                        showToast(`Imported ${wishesData.length} floating wish(es)! 🎉`, '🎈');
+                    } else {
+                        showToast('Invalid Sync Code — paste a valid BBF1:... code', '⚠️');
+                    }
+                };
+            }
+            modal.querySelector('#sync-code-textarea').value = payload;
+        }
 
         function encodePacketBase64(obj) {
             try {
                 const jsonStr = JSON.stringify(obj);
                 const bytes = new TextEncoder().encode(jsonStr);
                 let bin = '';
-                bytes.forEach(b => { bin += String.fromCharCode(b); });
+                for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
                 return 'BBF1:' + btoa(bin);
             } catch (e) {
                 return JSON.stringify(obj);
@@ -2386,24 +2365,24 @@
             });
             return { ok: true, status: res.status };
         }
-
-        async function pullFromCustomRtdb() {
-            const base = getActiveRtdbBaseUrl();
-            if (!base) return { ok: false, status: 0 };
+        async function pullFromCustomCloud() {
+            const cfg = getCloudConfig();
+            if (!cfg.url) return { ok: false, status: 0 };
             try {
-                const res = await fetch(`${base}/fab8_wishes.json?_t=${Date.now()}`, { cache: 'no-store' });
+                if (cfg.provider === 'jsonbin') {
+                    const headers = {};
+                    if (cfg.key) headers['X-Access-Key'] = cfg.key;
+                    const res = await fetch(`${cfg.url}/latest?_t=${Date.now()}`, { headers, cache: 'no-store' });
+                    if (!res.ok) return { ok: false, status: res.status };
+                    const json = await res.json();
+                    const data = json && json.record ? json.record : json;
+                    if (data) handleIncomingCloudPacket({ action: 'snapshot', ...data });
+                    return { ok: true, status: res.status };
+                }
+                const res = await fetch(`${cfg.url}/fab8_wishes.json?_t=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) return { ok: false, status: res.status };
                 const data = await res.json();
-                if (!data) return { ok: true, status: res.status };
-                if (Array.isArray(data.deletedIds)) {
-                    data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                    persistDeletedIdsLocally();
-                }
-                if (Array.isArray(data.wishes)) {
-                    wishesData = mergeWishesLists(data.wishes, wishesData);
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                }
+                if (data) handleIncomingCloudPacket({ action: 'snapshot', ...data });
                 return { ok: true, status: res.status };
             } catch (e) {
                 return { ok: false, status: 0 };
@@ -2414,7 +2393,7 @@
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
                 const [rDb, r1, r2] = await Promise.all([
-                    pullFromCustomRtdb(),
+                    pullFromCustomCloud(),
                     pullFromNtfyChannel(NTFY_TOPIC_URL),
                     pullFromNtfyChannel(NTFY_BACKUP_URL)
                 ]);
@@ -2432,10 +2411,10 @@
                 }
             } catch (e) {
                 if (syncPill) {
-                    syncPill.textContent = `🟡 Local Only (${e.message}) — Use Copy Sync Link`;
+                    syncPill.textContent = `🟡 Local (${e.message}) — Tap ☁️ Setup or 📋 Code`;
                 }
                 if (manualNotify) {
-                    showToast(`Cloud sync error (${e.message}) — tap Copy Sync Link 🔗`, '⚠️');
+                    showToast(`Network blocked public relay (${e.message}) — tap ☁️ 3-Way Cloud Setup or 📋 Sync Code`, '⚠️');
                 }
             }
         }
@@ -2464,18 +2443,32 @@
                 deletedIds: Array.from(deletedWishIds).slice(-80),
                 updatedAt: Date.now()
             };
-            const base = getActiveRtdbBaseUrl();
-            if (base) {
+            const cfg = getCloudConfig();
+            if (cfg.url) {
                 try {
-                    await fetch(`${base}/fab8_wishes.json`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            wishes: snapshotPayload.wishes,
-                            deletedIds: snapshotPayload.deletedIds,
-                            updatedAt: snapshotPayload.updatedAt
-                        })
-                    });
+                    if (cfg.provider === 'jsonbin') {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (cfg.key) headers['X-Access-Key'] = cfg.key;
+                        await fetch(cfg.url, {
+                            method: 'PUT',
+                            headers,
+                            body: JSON.stringify({
+                                wishes: snapshotPayload.wishes,
+                                deletedIds: snapshotPayload.deletedIds,
+                                updatedAt: snapshotPayload.updatedAt
+                            })
+                        });
+                    } else {
+                        await fetch(`${cfg.url}/fab8_wishes.json`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                wishes: snapshotPayload.wishes,
+                                deletedIds: snapshotPayload.deletedIds,
+                                updatedAt: snapshotPayload.updatedAt
+                            })
+                        });
+                    }
                 } catch (e) {}
             }
             const encodedSnap = encodePacketBase64(snapshotPayload);
@@ -2528,9 +2521,9 @@
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = (ok1 || ok2 || getActiveRtdbBaseUrl())
+                syncPill.textContent = (ok1 || ok2 || getCloudConfig().url)
                     ? `🟢 Cloud Synced (${wishesData.length})`
-                    : `🟡 Saved Locally — Tap Copy Sync Link`;
+                    : `🟡 Saved Locally — Tap ☁️ Setup or 📋 Code`;
             }
         }
 
