@@ -1179,98 +1179,8 @@
                     <button type="button" onclick="fetchSharedCloudWishes(true)" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 text-[11px] font-bold transition cursor-pointer">
                         🔄 Sync Now
                     </button>
-                </div>
-                <h2 class="text-3xl sm:text-4xl font-bold text-white mb-3">Sign the Anniversary Wall ✍️</h2>
-                <p class="text-slate-300 text-sm sm:text-base mb-6">
-                    When any of the 8 buddies writes a wish here, it stays saved across refreshes and <strong>floats across the website for all buddies</strong>, emails a card to <strong class="text-pink-300">mk9860490@gmail.com</strong>, and creates a shareable WhatsApp card!
-                </p>
-
-                <!-- Wish Form -->
-                <form id="wish-form" class="bg-gradient-to-br from-[#1d1447] via-[#2b1354] to-[#19163d] text-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-pink-500/35 mb-6">
-                    <h3 class="font-display text-xl font-bold mb-1">🎈 Launch Your Floating Wish</h3>
-                    <p class="text-xs text-slate-300 mb-4">Your wish will stay floating for everyone in the squad!</p>
-                    <div class="space-y-3">
-                        <input type="text" id="wish-name" placeholder="Your Name (e.g. Gowri / Sai / Shashi)" required class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
-                        <textarea id="wish-text" rows="3" placeholder="Write your 4th anniversary wish for the squad..." required class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"></textarea>
-                        <button type="submit" id="wish-submit-btn" class="w-full py-3.5 rounded-xl neon-animated-bg text-white font-extrabold text-sm shadow-lg shadow-pink-500/30 hover:opacity-95 transition cursor-pointer">
-                            🎈 Float Wish on Site, Email & Share Card
-                        </button>
-                    </div>
-                </form>
-
-                <!-- Status Banner & Pinned Wishes List -->
-                <div class="glass-dark rounded-3xl p-5 shadow-xl">
-                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                        <span class="text-xs font-extrabold uppercase tracking-wider text-pink-300">✨ Squad Floating Wishes Status</span>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="copySquadSyncLink()" class="px-2.5 py-1 rounded-full bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/40 text-cyan-200 text-[11px] font-bold transition cursor-pointer">
-                                🔗 Copy Sync Link
-                            </button>
-                            <span id="wishes-board-counter" class="text-xs font-bold text-amber-300">0 / 8 Buddies Floated</span>
-                        </div>
-                    </div>
-                    <div id="wishes-list" class="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
-                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- SECTION 4: INTERACTIVE PARTY ZONE (CAKE, SUPERLATIVE WHEEL & GAMES) -->
-    <section id="party-zone" class="py-16 sm:py-24 px-4 bg-[#0b0921] border-t border-purple-500/20">
-        <div class="max-w-5xl mx-auto">
-            <div class="text-center mb-12">
-                <span class="inline-block px-3.5 py-1 rounded-full bg-pink-500/15 border border-pink-400/30 text-pink-300 text-xs font-bold uppercase tracking-wider mb-3">
-                    Interactive Party Zone
-                </span>
-                <h2 class="text-3xl sm:text-5xl font-bold text-white mb-3">Cake, Squad Wheel & Party Games 🎡</h2>
-                <p class="text-slate-300 max-w-xl mx-auto text-sm sm:text-base">
-                    Blow out our 4th Anniversary candles, spin the superlative wheel, and challenge the squad in 3 interactive mini-games!
-                </p>
-            </div>
-
-            <!-- Top Row: Virtual Cake & Superlative Spinner -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Virtual 4th Anniversary Cake -->
-                <div class="glass-dark rounded-3xl p-8 text-center shadow-2xl flex flex-col items-center justify-between">
-                    <div>
-                        <span class="px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-bold">4 Candles for 4 Years</span>
-                        <h3 class="font-display text-2xl font-bold text-white mt-3">Virtual Anniversary Cake</h3>
-                        <p id="cake-status-text" class="text-sm text-slate-300 mt-1">Tap the cake below to blow out all 4 candles! 🌬️</p>
-                    </div>
-
-                    <div onclick="blowOutCandles()" class="my-8 cursor-pointer select-none group relative" title="Tap to blow out candles!">
-                        <svg class="w-64 h-56 mx-auto drop-shadow-xl group-hover:scale-105 transition-transform" viewBox="0 0 260 220">
-                            <ellipse cx="130" cy="198" rx="115" ry="14" fill="#312e81"/>
-                            <rect x="42" y="135" width="176" height="58" rx="14" fill="#f472b6"/>
-                            <path d="M42 150 Q64 166 86 150 T130 150 T174 150 T218 150 L218 138 Q218 135 204 135 L56 135 Q42 135 42 138 Z" fill="#fbcfe8"/>
-                            <rect x="68" y="88" width="124" height="50" rx="12" fill="#a855f7"/>
-                            <path d="M68 102 Q84 115 100 102 T132 102 T164 102 T192 102 L192 92 Q192 88 180 88 L80 88 Q68 88 68 92 Z" fill="#f3e8ff"/>
-                            <text x="130" y="177" text-anchor="middle" fill="#ffffff" font-family="Fredoka, sans-serif" font-weight="bold" font-size="14">4 YEARS OF BBF 🥳</text>
-                            <g transform="translate(86, 52)">
-                                <rect x="0" y="14" width="8" height="24" rx="3" fill="#38bdf8"/>
-                                <path class="flame" d="M4 0 C8 6 8 11 4 13 C0 11 0 6 4 0 Z" fill="#fbbf24"/>
-                            </g>
-                            <g transform="translate(113, 52)">
-                                <rect x="0" y="14" width="8" height="24" rx="3" fill="#fb7185"/>
-                                <path class="flame" d="M4 0 C8 6 8 11 4 13 C0 11 0 6 4 0 Z" fill="#fbbf24"/>
-                            </g>
-                            <g transform="translate(140, 52)">
-                                <rect x="0" y="14" width="8" height="24" rx="3" fill="#34d399"/>
-                                <path class="flame" d="M4 0 C8 6 8 11 4 13 C0 11 0 6 4 0 Z" fill="#fbbf24"/>
-                            </g>
-                            <g transform="translate(167, 52)">
-                                <rect x="0" y="14" width="8" height="24" rx="3" fill="#fbbf24"/>
-                                <path class="flame" d="M4 0 C8 6 8 11 4 13 C0 11 0 6 4 0 Z" fill="#f97316"/>
-                            </g>
-                        </svg>
-                    </div>
-
-                    <button id="relight-btn" onclick="relightCandles()" class="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 border border-white/15 font-bold text-xs transition cursor-pointer">
-                        🔥 Relight Candles
+                    <button type="button" onclick="configureCustomCloudDb()" class="px-2.5 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/35 border border-purple-400/40 text-purple-200 text-[11px] font-bold transition cursor-pointer" title="Optional: Set your own Firebase Realtime DB URL">
+                        ⚙️ Cloud URL
                     </button>
                 </div>
 
@@ -2079,16 +1989,18 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v20';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v20';
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/best_buddies_forever_fab8_2026_9860490';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v21';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v21';
+        const CUSTOM_RTDB_KEY = 'bbf_fab8_custom_rtdb_url_v21';
+        // Built-in CORS-enabled public cloud endpoints so every device & Chrome profile syncs automatically
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_4th_anniversary_wishes_2026';
+        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_4th_anniversary_backup_2026';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
-
         const deletedWishIds = new Set();
-        const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
-            ? new BroadcastChannel('bbf_fab8_squad_channel_v20')
+        const squadBroadcast = typeof BroadcastChannel !== 'undefined'
+            ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
 
         function makeWishKey(author, text) {
@@ -2101,111 +2013,148 @@
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
+                .replace(/'/g, '&#39;');
+        }
+
+        function getActiveRtdbBaseUrl() {
+            try {
+                const raw = localStorage.getItem(CUSTOM_RTDB_KEY) || '';
+                return raw.trim().replace(/\/+$/, '');
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function configureCustomCloudDb() {
+            const current = getActiveRtdbBaseUrl();
+            const modalId = 'custom-cloud-db-modal';
+            let modal = document.getElementById(modalId);
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'fixed inset-0 z-[115] flex items-center justify-center bg-black/80 backdrop-blur-md p-4';
+                modal.innerHTML = `
+                    <div class="bg-[#141038] border border-purple-400/50 rounded-3xl max-w-md w-full p-6 shadow-2xl text-white">
+                        <h3 class="font-display text-xl font-bold mb-1">⚙️ Shared Firebase Cloud URL</h3>
+                        <p class="text-xs text-slate-300 mb-3">Optional: Paste a Firebase Realtime Database URL (e.g. <code class="text-amber-300">https://your-app.firebaseio.com</code>) for instant permanent sync across all devices.</p>
+                        <input id="custom-rtdb-input" type="url" placeholder="https://your-project-default-rtdb.firebaseio.com" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 text-xs text-white mb-4 focus:outline-none focus:ring-2 focus:ring-pink-400">
+                        <div class="flex justify-end gap-2">
+                            <button type="button" id="custom-rtdb-cancel" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold cursor-pointer">Cancel</button>
+                            <button type="button" id="custom-rtdb-save" class="px-4 py-2 rounded-xl neon-animated-bg text-xs font-extrabold cursor-pointer">Save & Sync</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                modal.querySelector('#custom-rtdb-cancel').onclick = () => modal.remove();
+                modal.querySelector('#custom-rtdb-save').onclick = () => {
+                    const val = modal.querySelector('#custom-rtdb-input').value.trim().replace(/\/+$/, '');
+                    try {
+                        if (val) localStorage.setItem(CUSTOM_RTDB_KEY, val);
+                        else localStorage.removeItem(CUSTOM_RTDB_KEY);
+                    } catch (e) {}
+                    modal.remove();
+                    fetchSharedCloudWishes(true);
+                };
+            }
+            modal.querySelector('#custom-rtdb-input').value = current;
+        }
+
+        function mergeWishesLists(incomingList, existingList) {
+            const map = new Map();
+            const combined = [...(Array.isArray(incomingList) ? incomingList : []), ...(Array.isArray(existingList) ? existingList : [])];
+            combined.forEach(item => {
+                if (!item || !item.author || !item.text) return;
+                const idStr = item.id ? String(item.id) : '';
+                if (idStr && deletedWishIds.has(idStr)) return;
+                const key = idStr || makeWishKey(item.author, item.text);
+                const prev = map.get(key);
+                if (!prev) {
+                    map.set(key, {
+                        id: idStr || `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        cloudDocId: item.cloudDocId || '',
+                        author: String(item.author).trim(),
+                        text: String(item.text).trim(),
+                        date: item.date || '13/11/2026',
+                        createdAt: Number(item.createdAt) || 0
+                    });
+                } else {
+                    map.set(key, {
+                        ...prev,
+                        cloudDocId: item.cloudDocId || prev.cloudDocId,
+                        createdAt: Math.max(prev.createdAt || 0, Number(item.createdAt) || 0)
+                    });
+                }
+            });
+            return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         }
 
         function persistDeletedIdsLocally() {
-            try {
-                localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(Array.from(deletedWishIds).slice(-100)));
-            } catch (e) {}
+            const arr = Array.from(deletedWishIds).slice(-120);
+            try { localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
+            try { sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
         }
 
         function persistWishesLocally() {
-            const cleanList = wishesData
-                .filter(w => w && w.author && w.text && !deletedWishIds.has(String(w.id || '')))
-                .slice(0, 25);
+            const trimmed = wishesData.slice(0, 25);
+            const json = JSON.stringify(trimmed);
+            try { localStorage.setItem(WISHES_STORAGE_KEY, json); } catch (e) {}
+            try { sessionStorage.setItem(WISHES_STORAGE_KEY, json); } catch (e) {}
             try {
-                localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(cleanList));
-            } catch (e) {}
-            try {
-                sessionStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(cleanList));
-            } catch (e) {}
-            try {
-                const compact = cleanList.slice(0, 12).map(w => ({
+                const compact = trimmed.slice(0, 12).map(w => ({
                     i: w.id,
                     a: w.author,
                     t: w.text,
                     d: w.date || '13/11/2026',
                     c: w.createdAt || Date.now()
                 }));
-                if (compact.length > 0) {
-                    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
-                    if (encoded.length < 3500) {
-                        window.location.hash = `wishes=${encoded}`;
-                    }
-                } else if (window.location.hash.startsWith('#wishes=')) {
-                    window.location.hash = '';
+                const encoded = encodeURIComponent(JSON.stringify(compact));
+                if (encoded.length < 3500) {
+                    window.location.hash = `wishes=${encoded}`;
                 }
             } catch (e) {}
         }
 
-        function mergeWishesLists(incomingList, existingList) {
-            const map = new Map();
-            [...(incomingList || []), ...(existingList || [])].forEach(item => {
-                if (!item || !item.author || !item.text) return;
-                const id = String(item.id || `${item.author}_${item.createdAt || 0}`);
-                if (deletedWishIds.has(id)) return;
-                const dedupeKey = makeWishKey(item.author, item.text);
-                if (!map.has(dedupeKey)) {
-                    map.set(dedupeKey, {
-                        id,
-                        cloudDocId: item.cloudDocId || null,
-                        author: String(item.author).trim(),
-                        text: String(item.text).trim(),
-                        date: item.date || '13/11/2026',
-                        createdAt: Number(item.createdAt) || Date.now()
-                    });
-                } else if (item.cloudDocId && !map.get(dedupeKey).cloudDocId) {
-                    map.get(dedupeKey).cloudDocId = item.cloudDocId;
-                }
-            });
-            return Array.from(map.values())
-                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-                .slice(0, 25);
-        }
-
         function loadSavedWishesOnBoot() {
             try {
-                const rawDel = localStorage.getItem(DELETED_IDS_STORAGE_KEY);
+                const rawDel = localStorage.getItem(DELETED_IDS_STORAGE_KEY) || sessionStorage.getItem(DELETED_IDS_STORAGE_KEY);
                 if (rawDel) {
-                    const parsedDel = JSON.parse(rawDel);
-                    if (Array.isArray(parsedDel)) {
-                        parsedDel.forEach(id => deletedWishIds.add(String(id)));
-                    }
+                    JSON.parse(rawDel).forEach(id => deletedWishIds.add(String(id)));
                 }
             } catch (e) {}
 
             let loaded = [];
             try {
-                const rawLocal = localStorage.getItem(WISHES_STORAGE_KEY);
-                if (rawLocal) loaded = loaded.concat(JSON.parse(rawLocal) || []);
+                const raw = localStorage.getItem(WISHES_STORAGE_KEY) || sessionStorage.getItem(WISHES_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) loaded = mergeWishesLists(parsed, loaded);
+                }
             } catch (e) {}
-            try {
-                const rawSession = sessionStorage.getItem(WISHES_STORAGE_KEY);
-                if (rawSession) loaded = loaded.concat(JSON.parse(rawSession) || []);
-            } catch (e) {}
+
             try {
                 const hash = window.location.hash || '';
-                const match = hash.match(/wishes=([A-Za-z0-9+/=]+)/);
+                const match = hash.match(/wishes=([^&]+)/);
                 if (match && match[1]) {
-                    const decoded = JSON.parse(decodeURIComponent(escape(atob(match[1]))));
+                    const decoded = JSON.parse(decodeURIComponent(match[1]));
                     if (Array.isArray(decoded)) {
-                        decoded.forEach(c => {
-                            if (c && c.a && c.t) {
-                                loaded.push({
-                                    id: c.i || `${Date.now()}_${Math.random()}`,
-                                    author: c.a,
-                                    text: c.t,
-                                    date: c.d || '13/11/2026',
-                                    createdAt: c.c || Date.now()
-                                });
-                            }
-                        });
+                        const expanded = decoded.map(x => ({
+                            id: x.i || x.id,
+                            author: x.a || x.author,
+                            text: x.t || x.text,
+                            date: x.d || x.date || '13/11/2026',
+                            createdAt: x.c || x.createdAt || 0
+                        }));
+                        loaded = mergeWishesLists(expanded, loaded);
                     }
                 }
             } catch (e) {}
 
-            wishesData = mergeWishesLists(loaded, []);
+            wishesData = loaded;
+            renderFloatingWishes();
+        }
+
+        function toggleFloatingWishes() {
+            floatingVisible = !floatingVisible;
             renderFloatingWishes();
         }
 
@@ -2298,89 +2247,129 @@
             ];
 
             const gradients = [
-                'from-pink-600/90 to-purple-800/90 border-pink-300/60',
-                'from-cyan-600/90 to-blue-800/90 border-cyan-300/60',
-                'from-amber-500/90 to-rose-700/90 border-amber-200/60',
-                'from-emerald-600/90 to-teal-800/90 border-emerald-300/60'
+                'from-pink-600/90 to-purple-700/90 border-pink-300/60',
+                'from-indigo-600/90 to-cyan-700/90 border-cyan-300/60',
+                'from-amber-500/90 to-rose-600/90 border-amber-200/60',
+                'from-emerald-600/90 to-teal-700/90 border-emerald-300/60'
             ];
 
             layer.innerHTML = wishesData.slice(0, 8).map((w, idx) => {
-                const pos = slots[idx % slots.length];
+                const slot = slots[idx % slots.length];
+                const posStyle = Object.entries(slot).map(([k, v]) => `${k}:${v};`).join('');
                 const grad = gradients[idx % gradients.length];
-                const posStyle = `top:${pos.top};${pos.left ? `left:${pos.left};` : `right:${pos.right};`}--drift-dur:${6.5 + (idx % 4)}s;--drift-delay:${idx * 0.45}s;`;
+                const dur = (6.5 + (idx % 4) * 1.1).toFixed(1);
+                const delay = ((idx % 5) * 0.45).toFixed(2);
                 return `
-                    <div style="${posStyle}" class="floating-wish-bubble fixed max-w-[215px] sm:max-w-[250px] p-3 rounded-2xl bg-gradient-to-br ${grad} border backdrop-blur-md shadow-2xl text-white">
+                    <div style="${posStyle} --drift-dur:${dur}s; --drift-delay:${delay}s;" class="floating-wish-bubble fixed max-w-[230px] sm:max-w-[260px] p-3.5 rounded-2xl bg-gradient-to-br ${grad} border backdrop-blur-md text-white shadow-2xl">
                         <div class="flex items-center justify-between gap-2 mb-1">
                             <span class="font-display font-bold text-xs text-amber-200 truncate">🎈 ${escapeHtml(w.author)}</span>
-                            <button type="button" onclick="deleteFloatingWish(${idx})" class="w-5 h-5 rounded-full bg-black/30 hover:bg-black/55 text-[10px] font-bold flex items-center justify-center cursor-pointer" title="Delete for all buddies">✕</button>
+                            <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete wish for all buddies" class="w-5 h-5 rounded-full bg-black/30 hover:bg-black/55 text-[10px] font-bold flex items-center justify-center shrink-0 cursor-pointer">✕</button>
                         </div>
-                        <p class="text-[11px] sm:text-xs leading-snug text-white/95 line-clamp-3">${escapeHtml(w.text)}</p>
+                        <p class="text-xs leading-snug text-white/95 break-words">${escapeHtml(w.text)}</p>
                     </div>
                 `;
             }).join('');
         }
 
-        function toggleFloatingWishes() {
-            floatingVisible = !floatingVisible;
-            renderFloatingWishes();
-            showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden 🙈', '🎈');
-        }
-
         function parseNtfyPayloadLine(line) {
             try {
-                const envelope = JSON.parse(line);
-                if (!envelope || envelope.event !== 'message' || !envelope.message) return null;
-                return JSON.parse(envelope.message);
+                const outer = JSON.parse(line);
+                if (outer && outer.event && outer.event !== 'message') return null;
+                if (outer && typeof outer.message === 'string') {
+                    return JSON.parse(outer.message);
+                }
+                return outer;
             } catch (e) {
                 return null;
             }
         }
 
         function handleIncomingCloudPacket(payload) {
-            if (!payload) return;
+            if (!payload || typeof payload !== 'object') return;
             if (payload.action === 'delete') {
                 window.registerRemoteDeletedWish(payload.wishId, payload.key);
-            } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
+                return;
+            }
+            if (payload.action === 'snapshot') {
                 if (Array.isArray(payload.deletedIds)) {
                     payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
                     persistDeletedIdsLocally();
                 }
-                wishesData = mergeWishesLists(payload.wishes, wishesData);
-                persistWishesLocally();
-                renderFloatingWishes();
-            } else if (payload.action === 'add' && payload.author && payload.text) {
+                if (Array.isArray(payload.wishes)) {
+                    wishesData = mergeWishesLists(payload.wishes, wishesData);
+                    persistWishesLocally();
+                    renderFloatingWishes();
+                }
+                return;
+            }
+            if ((payload.action === 'add' || !payload.action) && payload.author && payload.text) {
                 wishesData = mergeWishesLists([payload], wishesData);
                 persistWishesLocally();
                 renderFloatingWishes();
             }
         }
 
+        async function pullFromNtfyChannel(url) {
+            const res = await fetch(`${url}/json?poll=1&since=all&_t=${Date.now()}`, {
+                method: 'GET',
+                cache: 'no-store'
+            });
+            if (!res.ok) return false;
+            const text = await res.text();
+            const lines = text.split('\n').filter(Boolean);
+            lines.forEach(line => {
+                const payload = parseNtfyPayloadLine(line);
+                handleIncomingCloudPacket(payload);
+            });
+            return true;
+        }
+
+        async function pullFromCustomRtdb() {
+            const base = getActiveRtdbBaseUrl();
+            if (!base) return false;
+            try {
+                const res = await fetch(`${base}/fab8_wishes.json?_t=${Date.now()}`, { cache: 'no-store' });
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (!data) return true;
+                if (Array.isArray(data.deletedIds)) {
+                    data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                    persistDeletedIdsLocally();
+                }
+                if (Array.isArray(data.wishes)) {
+                    wishesData = mergeWishesLists(data.wishes, wishesData);
+                    persistWishesLocally();
+                    renderFloatingWishes();
+                }
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
-                const res = await fetch(`${NTFY_TOPIC_URL}/json?poll=1&since=all&_t=${Date.now()}`, {
-                    method: 'GET',
-                    cache: 'no-store'
-                });
-                if (!res.ok) throw new Error('Poll failed');
-                const text = await res.text();
-                const lines = text.split('\n').filter(Boolean);
-                lines.forEach(line => {
-                    const payload = parseNtfyPayloadLine(line);
-                    handleIncomingCloudPacket(payload);
-                });
+                const results = await Promise.allSettled([
+                    pullFromCustomRtdb(),
+                    pullFromNtfyChannel(NTFY_TOPIC_URL),
+                    pullFromNtfyChannel(NTFY_BACKUP_URL)
+                ]);
+                const anyOk = results.some(r => r.status === 'fulfilled' && r.value === true);
+                if (!anyOk) throw new Error('All cloud channels unreachable');
+
                 if (syncPill) {
-                    syncPill.textContent = `🟢 Multi-Device Cloud Synced (${wishesData.length})`;
+                    syncPill.textContent = `🟢 All-Device Cloud Synced (${wishesData.length})`;
                 }
                 if (manualNotify) {
-                    showToast(`Synced! ${wishesData.length} floating wish(es) active 🔄`, '🎈');
+                    showToast(`Synced across devices! ${wishesData.length} floating wish(es) 🔄`, '🎈');
                 }
             } catch (e) {
                 if (syncPill) {
                     syncPill.textContent = `🟡 Saved Locally (${wishesData.length}) — Use Copy Sync Link`;
                 }
                 if (manualNotify) {
-                    showToast('Cloud blocked by browser/network — use Copy Sync Link 🔗', '⚠️');
+                    showToast('Network blocked cloud — tap Copy Sync Link 🔗 to share wishes', '⚠️');
                 }
             }
         }
@@ -2400,6 +2389,34 @@
                     }
                 };
             } catch (e) {}
+        }
+
+        async function pushAllWishesSnapshot() {
+            const snapshotPayload = {
+                action: 'snapshot',
+                wishes: wishesData.slice(0, 20),
+                deletedIds: Array.from(deletedWishIds).slice(-80),
+                updatedAt: Date.now()
+            };
+            const base = getActiveRtdbBaseUrl();
+            if (base) {
+                try {
+                    await fetch(`${base}/fab8_wishes.json`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            wishes: snapshotPayload.wishes,
+                            deletedIds: snapshotPayload.deletedIds,
+                            updatedAt: snapshotPayload.updatedAt
+                        })
+                    });
+                } catch (e) {}
+            }
+            const bodyStr = JSON.stringify(snapshotPayload);
+            await Promise.all([
+                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 2),
+                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 2)
+            ]);
         }
 
         async function pushWithRetry(url, bodyStr, retries = 3) {
@@ -2428,12 +2445,6 @@
                 date: newWish.date || '13/11/2026',
                 createdAt: newWish.createdAt || Date.now()
             };
-            const snapshotPayload = {
-                action: 'snapshot',
-                wishes: wishesData.slice(0, 20),
-                deletedIds: Array.from(deletedWishIds).slice(-80),
-                updatedAt: Date.now()
-            };
 
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(addPayload); } catch (e) {}
@@ -2442,13 +2453,17 @@
                 await window.saveWishToLiveCloud(addPayload);
             }
 
-            const ok1 = await pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(addPayload), 3);
-            const ok2 = await pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(snapshotPayload), 2);
+            const addStr = JSON.stringify(addPayload);
+            const [ok1, ok2] = await Promise.all([
+                pushWithRetry(NTFY_TOPIC_URL, addStr, 3),
+                pushWithRetry(NTFY_BACKUP_URL, addStr, 3)
+            ]);
+            await pushAllWishesSnapshot();
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = (ok1 || ok2)
-                    ? `🟢 Multi-Device Cloud Synced (${wishesData.length})`
+                syncPill.textContent = (ok1 || ok2 || getActiveRtdbBaseUrl())
+                    ? `🟢 All-Device Cloud Synced (${wishesData.length})`
                     : `🟡 Saved Locally — Tap Copy Sync Link`;
             }
         }
@@ -2468,18 +2483,14 @@
                 await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
             const delPayload = { action: 'delete', wishId, key: delKey, deletedAt: Date.now() };
-            const snapPayload = {
-                action: 'snapshot',
-                wishes: wishesData.slice(0, 20),
-                deletedIds: Array.from(deletedWishIds).slice(-80),
-                updatedAt: Date.now()
-            };
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
+            const delStr = JSON.stringify(delPayload);
             await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(delPayload), 3),
-                pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(snapPayload), 2)
+                pushWithRetry(NTFY_TOPIC_URL, delStr, 3),
+                pushWithRetry(NTFY_BACKUP_URL, delStr, 3),
+                pushAllWishesSnapshot()
             ]);
         }
 
