@@ -2079,13 +2079,14 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v10';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v10';
-        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026_v10';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v11';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v11';
+        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026_v11';
         const NTFY_TOPIC_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}`;
         const NTFY_BACKUP_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}_mirror`;
-        // Persistent Key-Value Cloud Store (stores full wishes state so refresh always restores it)
-        const KV_STATE_URL = 'https://kvdb.io/Dr8sK2mN9pQ4wX7vL5zB1c/fab8_wishes_state_v10';
+        // Universal Cross-Profile & Cross-Device Shared Cloud Database (CORS-enabled GET/PUT/PATCH)
+        const SHARED_RTDB_BASE = 'https://best-buddies-forever-fab8-default-rtdb.firebaseio.com/fab8_squad_wishes';
+        const SHARED_JSONBLOB_URL = 'https://jsonblob.com/api/jsonBlob/019ab4e2-8f1c-7d3a-9e2b-5c4a1b8e7f90';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
@@ -2439,35 +2440,130 @@
 
         async function fetchSharedCloudWishes(manualTrigger = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
+            let syncedAny = false;
             try {
-                // 1. Pull full persistent state snapshot from KVdb
+                // 1. Pull universal cross-browser/cross-device JSON state (Firebase RTDB REST)
                 try {
-                    const kvRes = await fetch(`${KV_STATE_URL}?_t=${Date.now()}`, { cache: 'no-store' });
-                    if (kvRes.ok) {
-                        const kvData = await kvRes.json();
-                        if (kvData && Array.isArray(kvData.deletedIds)) {
-                            kvData.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                            persistDeletedIdsLocally();
-                        }
-                        if (kvData && Array.isArray(kvData.wishes)) {
-                            wishesData = mergeWishesLists(kvData.wishes, wishesData);
+                    const rtdbRes = await fetch(`${SHARED_RTDB_BASE}.json?_t=${Date.now()}`, { cache: 'no-store' });
+                    if (rtdbRes.ok) {
+                        const rtdbData = await rtdbRes.json();
+                        if (rtdbData && typeof rtdbData === 'object') {
+                            if (rtdbData.deletedIds && typeof rtdbData.deletedIds === 'object') {
+                                Object.keys(rtdbData.deletedIds).forEach(id => {
+                                    if (rtdbData.deletedIds[id]) deletedWishIds.add(String(id));
+                                });
+                                persistDeletedIdsLocally();
+                            }
+                            if (rtdbData.items && typeof rtdbData.items === 'object') {
+                                const remoteList = Object.values(rtdbData.items).filter(Boolean);
+                                wishesData = mergeWishesLists(remoteList, wishesData);
+                            }
+                            wishesData = wishesData.filter(item => !deletedWishIds.has(String(item.id)));
                             persistWishesLocally();
                             renderFloatingWishes();
+                            syncedAny = true;
                         }
                     }
-                } catch (kvErr) {}
+                } catch (rtdbErr) {}
 
-                // 2. Also pull live ntfy.sh stream events
+                // 2. Pull live ntfy.sh pub/sub stream events (backup real-time broadcast across all profiles/devices)
                 let ok = await pullFromNtfyEndpoint(NTFY_TOPIC_URL);
                 if (!ok) {
                     ok = await pullFromNtfyEndpoint(NTFY_BACKUP_URL);
                 }
-                if (ok) {
-                    if (syncPill) syncPill.textContent = '🟢 Live Sync Active (All Devices)';
-                    if (manualTrigger) showToast(`Synced! ${wishesData.length} floating wish(es) active 🎈`, '✅');
+                if (ok) syncedAny = true;
+
+                if (syncedAny) {
+                    if (syncPill) syncPill.textContent = '🟢 Live Sync Active (All Profiles & Devices)';
+                    if (manualTrigger) showToast(`Synced! ${wishesData.length} floating wish(es) active across all buddies 🎈`, '✅');
                 }
             } catch (e) {
                 if (manualTrigger) showToast('Could not reach cloud stream — check mobile data/Wi-Fi', '⚠️');
+            }
+        }
+
+        async function saveFullCloudStateSnapshot(latestWish = null, deletedId = null) {
+            // Write directly to Firebase RTDB REST (supports cross-origin PATCH/DELETE from any browser/profile/device)
+            try {
+                if (latestWish && latestWish.id) {
+                    await fetch(`${SHARED_RTDB_BASE}/items/${encodeURIComponent(latestWish.id)}.json`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: latestWish.id,
+                            author: latestWish.author,
+                            text: latestWish.text,
+                            date: latestWish.date || '13/11/2026',
+                            createdAt: latestWish.createdAt || Date.now()
+                        }),
+                        keepalive: true
+                    });
+                }
+                if (deletedId) {
+                    await Promise.all([
+                        fetch(`${SHARED_RTDB_BASE}/items/${encodeURIComponent(deletedId)}.json`, {
+                            method: 'DELETE',
+                            keepalive: true
+                        }),
+                        fetch(`${SHARED_RTDB_BASE}/deletedIds/${encodeURIComponent(deletedId)}.json`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: 'true',
+                            keepalive: true
+                        })
+                    ]);
+                }
+            } catch (err) {}
+        }
+
+        async function pushWithRetry(url, bodyStr, retries = 2) {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain;charset=UTF-8'
+                        },
+                        body: bodyStr,
+                        keepalive: true
+                    });
+                    if (res.ok) return true;
+                } catch (err) {}
+                await new Promise(r => setTimeout(r, 700 * (attempt + 1)));
+            }
+            return false;
+        }
+
+        async function pushSharedCloudWishes(latestWish) {
+            persistWishesLocally();
+            saveFullCloudStateSnapshot(latestWish, null);
+            if (latestWish && typeof window.saveWishToLiveCloud === 'function') {
+                await window.saveWishToLiveCloud(latestWish);
+            }
+            const syncPill = document.getElementById('cloud-sync-pill');
+            if (!latestWish) return;
+
+            const payload = {
+                action: 'add',
+                id: latestWish.id,
+                author: latestWish.author,
+                text: latestWish.text,
+                date: latestWish.date || '13/11/2026',
+                createdAt: latestWish.createdAt || Date.now()
+            };
+
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage(payload); } catch (e) {}
+            }
+
+            const bodyStr = JSON.stringify(payload);
+            const [primaryOk, backupOk] = await Promise.all([
+                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 2),
+                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 1)
+            ]);
+
+            if ((primaryOk || backupOk) && syncPill) {
+                syncPill.textContent = '🟢 Synced to All Profiles & Devices!';
             }
         }
 
@@ -2617,7 +2713,7 @@
             if (wishId) deletedWishIds.add(wishId);
             persistDeletedIdsLocally();
             persistWishesLocally();
-            saveFullCloudStateSnapshot();
+            saveFullCloudStateSnapshot(null, wishId);
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
             if (typeof window.deleteWishFromLiveCloud === 'function') {
