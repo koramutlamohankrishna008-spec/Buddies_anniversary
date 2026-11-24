@@ -6,8 +6,8 @@
     <title>😍Best buddies forever🥳 | 4th Anniversary Surprise</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Gun.js Decentralized Real-Time WebSocket Mesh (Bypasses file:// CORS restrictions across browsers & devices) -->
-    <script src="https://cdn.jsdelivr.net/npm/gun/gun.min.js"></script>
+    <!-- Live MQTT-over-WebSocket Retained Cloud Sync (Works across Chrome profiles, Edge, phones & file:// with zero CORS blocks) -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <!-- Three.js for Real 3D WebGL Characters -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- Google Fonts -->
@@ -1924,74 +1924,82 @@
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
-        let gunSquadNode = null;
+        let mqttClient = null;
+        const MQTT_RETAINED_TOPIC = 'best_buddies_forever/fab8_2026_tirupati/wishes_state_v1';
         const deletedWishIds = new Set();
         const squadBroadcast = typeof BroadcastChannel !== 'undefined'
             ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
 
-        // Initialize Gun.js WebSocket Mesh (Works across Chrome profiles, Edge, phones & file:// without CORS errors)
-        function initGunWebSocketMesh() {
-            if (typeof Gun === 'undefined') return;
-            try {
-                const gun = Gun({
-                    peers: [
-                        'https://gun-manhattan.herokuapp.com/gun',
-                        'https://relay.peer.ooo/gun',
-                        'https://gun-us.herokuapp.com/gun'
-                    ],
-                    localStorage: false
-                });
-                gunSquadNode = gun.get('best_buddies_forever_fab8_2026_wishes_mesh_v1');
+        // Live MQTT-over-WebSocket Retained Cloud Sync (Instant across Chrome profiles, Edge, phones & file://)
+        function initMqttCloudMesh() {
+            if (typeof mqtt === 'undefined') return;
+            const brokers = [
+                'wss://broker.emqx.io:8084/mqtt',
+                'wss://broker.hivemq.com:8884/mqtt'
+            ];
+            let brokerIdx = 0;
 
-                gunSquadNode.map().on((nodeData, nodeKey) => {
-                    if (!nodeKey || nodeKey === '_') return;
-                    if (nodeData === null || (nodeData && nodeData.deleted === true)) {
-                        window.registerRemoteDeletedWish(nodeKey, nodeData && nodeData.delKey ? nodeData.delKey : '');
-                        return;
-                    }
-                    if (nodeData && nodeData.author && nodeData.text) {
-                        if (deletedWishIds.has(String(nodeKey))) return;
-                        wishesData = mergeWishesLists([{
-                            id: String(nodeKey),
-                            author: String(nodeData.author),
-                            text: String(nodeData.text),
-                            date: String(nodeData.date || '13/11/2026'),
-                            createdAt: Number(nodeData.createdAt) || Date.now()
-                        }], wishesData);
-                        persistWishesLocally();
-                        renderFloatingWishes();
-                        const syncPill = document.getElementById('cloud-sync-pill');
-                        if (syncPill) {
-                            syncPill.textContent = `🟢 Live Mesh Synced (${wishesData.length})`;
+            function connectBroker(url) {
+                try {
+                    const clientId = 'fab8_buddy_' + Math.random().toString(16).slice(2, 10);
+                    const client = mqtt.connect(url, {
+                        clientId,
+                        clean: true,
+                        connectTimeout: 6000,
+                        reconnectPeriod: 4000
+                    });
+                    mqttClient = client;
+
+                    client.on('connect', () => {
+                        client.subscribe(MQTT_RETAINED_TOPIC, { qos: 1 }, () => {
+                            const syncPill = document.getElementById('cloud-sync-pill');
+                            if (syncPill) {
+                                syncPill.textContent = `🟢 Live Cloud Connected (${wishesData.length})`;
+                            }
+                        });
+                    });
+
+                    client.on('message', (topic, messageBuf) => {
+                        if (topic !== MQTT_RETAINED_TOPIC) return;
+                        const raw = messageBuf ? messageBuf.toString() : '';
+                        const payload = decodePacketBase64(raw);
+                        if (payload) {
+                            handleIncomingCloudPacket(payload);
+                            const syncPill = document.getElementById('cloud-sync-pill');
+                            if (syncPill) {
+                                syncPill.textContent = `🟢 Live Cloud Synced (${wishesData.length})`;
+                            }
                         }
-                    }
-                });
-            } catch (e) {}
+                    });
+
+                    client.on('error', () => {
+                        if (brokerIdx + 1 < brokers.length) {
+                            brokerIdx++;
+                            try { client.end(true); } catch (e) {}
+                            connectBroker(brokers[brokerIdx]);
+                        }
+                    });
+                } catch (e) {}
+            }
+
+            connectBroker(brokers[0]);
         }
 
-        function pushWishToGunMesh(wishObj) {
-            if (!gunSquadNode || !wishObj || !wishObj.id) return;
+        function publishRetainedWishesToMqtt() {
+            if (!mqttClient || !mqttClient.connected) return false;
             try {
-                gunSquadNode.get(String(wishObj.id)).put({
-                    author: String(wishObj.author),
-                    text: String(wishObj.text),
-                    date: String(wishObj.date || '13/11/2026'),
-                    createdAt: Number(wishObj.createdAt) || Date.now(),
-                    deleted: false
+                const encoded = encodePacketBase64({
+                    action: 'snapshot',
+                    wishes: wishesData.slice(0, 25),
+                    deletedIds: Array.from(deletedWishIds).slice(-100),
+                    updatedAt: Date.now()
                 });
-            } catch (e) {}
-        }
-
-        function deleteWishFromGunMesh(wishId, delKey) {
-            if (!gunSquadNode || !wishId) return;
-            try {
-                gunSquadNode.get(String(wishId)).put({
-                    deleted: true,
-                    delKey: delKey || '',
-                    deletedAt: Date.now()
-                });
-            } catch (e) {}
+                mqttClient.publish(MQTT_RETAINED_TOPIC, encoded, { qos: 1, retain: true });
+                return true;
+            } catch (e) {
+                return false;
+            }
         }
         function getCloudConfig() {
             try {
@@ -2486,8 +2494,8 @@
 
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
-            if (gunSquadNode && wishesData.length > 0) {
-                wishesData.forEach(w => pushWishToGunMesh(w));
+            if (mqttClient && !mqttClient.connected) {
+                try { mqttClient.reconnect(); } catch (e) {}
             }
             try {
                 const [rDb, r1, r2] = await Promise.all([
@@ -2495,26 +2503,27 @@
                     pullFromNtfyChannel(NTFY_TOPIC_URL),
                     pullFromNtfyChannel(NTFY_BACKUP_URL)
                 ]);
-                const anyOk = Boolean(gunSquadNode) || (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
+                const mqttOk = Boolean(mqttClient && mqttClient.connected);
+                const anyOk = mqttOk || (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
                 if (!anyOk) {
                     const code = (r1 && r1.status) || (r2 && r2.status) || 'Blocked';
                     throw new Error(`HTTP ${code}`);
                 }
 
                 if (syncPill) {
-                    syncPill.textContent = `🟢 Live Mesh Synced (${wishesData.length})`;
+                    syncPill.textContent = `🟢 Live Cloud Synced (${wishesData.length})`;
                 }
                 if (manualNotify) {
                     showToast(`Synced across all profiles & devices! ${wishesData.length} floating wish(es) 🔄`, '🎈');
                 }
             } catch (e) {
                 if (syncPill) {
-                    syncPill.textContent = gunSquadNode
-                        ? `🟢 WebSocket Mesh Active (${wishesData.length})`
+                    syncPill.textContent = (mqttClient && mqttClient.connected)
+                        ? `🟢 Live Cloud Synced (${wishesData.length})`
                         : `🟡 Local — Tap ☁️ Backup or 📋 Code`;
                 }
                 if (manualNotify) {
-                    showToast(`WebSocket Mesh checked (${wishesData.length} wish(es)) 🔄`, '🎈');
+                    showToast(`Checked live cloud (${wishesData.length} wish(es)) 🔄`, '🎈');
                 }
             }
         }
@@ -2596,7 +2605,7 @@
 
         async function pushSharedCloudWishes(newWish) {
             if (!newWish) return;
-            pushWishToGunMesh(newWish);
+            const mqttOk = publishRetainedWishesToMqtt();
             const addPayload = {
                 action: 'add',
                 id: newWish.id,
@@ -2622,8 +2631,8 @@
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = (gunSquadNode || ok1 || ok2 || getCloudConfig().url)
-                    ? `🟢 Live Mesh Synced (${wishesData.length})`
+                syncPill.textContent = (mqttOk || ok1 || ok2 || getCloudConfig().url)
+                    ? `🟢 Live Cloud Synced (${wishesData.length})`
                     : `🟡 Saved Locally — Tap ☁️ Backup or 📋 Code`;
             }
         }
@@ -2639,7 +2648,7 @@
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
 
-            deleteWishFromGunMesh(wishId, delKey);
+            publishRetainedWishesToMqtt();
             if (typeof window.deleteWishFromLiveCloud === 'function') {
                 await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
@@ -2757,9 +2766,9 @@
                 author: sender
             });
         }
-        // Initialize wishes on page load + start Gun.js WebSocket Mesh & live polling
+        // Initialize wishes on page load + start MQTT Retained Cloud Mesh & live polling
         loadSavedWishesOnBoot();
-        initGunWebSocketMesh();
+        initMqttCloudMesh();
         startLiveSquadStream();
         fetchSharedCloudWishes(false);
         setInterval(() => fetchSharedCloudWishes(false), 7000);
