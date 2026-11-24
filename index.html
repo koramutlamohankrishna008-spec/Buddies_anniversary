@@ -1634,6 +1634,12 @@
                     const cloudItems = [];
                     snapshot.forEach((docSnap) => {
                         const data = docSnap.data();
+                        if (data && data.action === 'delete' && data.key) {
+                            if (typeof window.registerRemoteDeletedWishKey === 'function') {
+                                window.registerRemoteDeletedWishKey(data.key);
+                            }
+                            return;
+                        }
                         if (data && data.author && data.text) {
                             cloudItems.push({
                                 cloudDocId: docSnap.id,
@@ -1658,22 +1664,31 @@
                 });
 
                 window.saveWishToLiveCloud = async function(wishObj) {
-                    if (!auth.currentUser) return;
+                    if (!auth.currentUser || !wishObj) return;
                     try {
                         await addDoc(wishesCol, {
-                            id: wishObj.id,
+                            id: wishObj.id || `${Date.now()}`,
                             author: wishObj.author,
                             text: wishObj.text,
                             date: wishObj.date || '13/11/2026',
-                            createdAt: Date.now()
+                            createdAt: wishObj.createdAt || Date.now()
                         });
                     } catch (e) {}
                 };
 
-                window.deleteWishFromLiveCloud = async function(cloudDocId) {
-                    if (!auth.currentUser || !cloudDocId) return;
+                window.deleteWishFromLiveCloud = async function(cloudDocId, delKey) {
+                    if (!auth.currentUser) return;
                     try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'floating_wishes', cloudDocId));
+                        if (cloudDocId) {
+                            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'floating_wishes', cloudDocId));
+                        }
+                        if (delKey) {
+                            await addDoc(wishesCol, {
+                                action: 'delete',
+                                key: delKey,
+                                createdAt: Date.now()
+                            });
+                        }
                     } catch (e) {}
                 };
             } catch (err) {
@@ -2063,6 +2078,7 @@
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
         const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v8';
+        const DELETED_KEYS_STORAGE_KEY = 'bbf_fab8_deleted_wish_keys_v8';
         // Multi-mirror CORS-free cloud sync (primary ntfy.sh stream + secondary mirror + BroadcastChannel)
         const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026';
         const NTFY_TOPIC_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}`;
@@ -2071,6 +2087,30 @@
         let floatingVisible = true;
         let sseConnection = null;
         let lastEventTimestamp = 0;
+
+        const deletedWishKeys = new Set();
+
+        function makeWishKey(author, text) {
+            return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
+        }
+
+        function persistDeletedKeysLocally() {
+            try {
+                window.localStorage.setItem(DELETED_KEYS_STORAGE_KEY, JSON.stringify(Array.from(deletedWishKeys)));
+            } catch (e) {}
+        }
+
+        window.registerRemoteDeletedWishKey = function(delKey) {
+            if (!delKey) return;
+            deletedWishKeys.add(delKey);
+            persistDeletedKeysLocally();
+            const beforeCount = wishesData.length;
+            wishesData = wishesData.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
+            if (wishesData.length !== beforeCount) {
+                persistWishesLocally();
+                renderFloatingWishes();
+            }
+        };
 
         // Instant same-browser / multi-tab channel
         let squadBroadcast = null;
@@ -2084,6 +2124,16 @@
         } catch (e) {}
 
         window.addEventListener('storage', function(e) {
+            if (e.key === DELETED_KEYS_STORAGE_KEY && e.newValue) {
+                try {
+                    const keys = JSON.parse(e.newValue);
+                    if (Array.isArray(keys)) {
+                        keys.forEach(k => deletedWishKeys.add(k));
+                        wishesData = wishesData.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
+                        renderFloatingWishes();
+                    }
+                } catch (err) {}
+            }
             if (e.key === WISHES_STORAGE_KEY && e.newValue) {
                 try {
                     const parsed = JSON.parse(e.newValue);
@@ -2096,6 +2146,16 @@
         });
 
         function loadSavedWishesOnBoot() {
+            try {
+                const rawDeleted = window.localStorage.getItem(DELETED_KEYS_STORAGE_KEY);
+                if (rawDeleted) {
+                    const parsedDel = JSON.parse(rawDeleted);
+                    if (Array.isArray(parsedDel)) {
+                        parsedDel.forEach(k => deletedWishKeys.add(k));
+                    }
+                }
+            } catch (e) {}
+
             let loaded = [];
             try {
                 const raw = window.localStorage.getItem(WISHES_STORAGE_KEY);
@@ -2117,7 +2177,7 @@
                 }
             } catch (e) {}
 
-            wishesData = loaded;
+            wishesData = loaded.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
             persistWishesLocally();
         }
 
@@ -2186,7 +2246,8 @@
             const seen = new Set();
             [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
                 if (!item || !item.author || !item.text) return;
-                const key = `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
+                const key = makeWishKey(item.author, item.text);
+                if (deletedWishKeys.has(key)) return;
                 if (!seen.has(key)) {
                     seen.add(key);
                     merged.push({
@@ -2198,7 +2259,7 @@
                         createdAt: item.createdAt || 0
                     });
                 } else if (item.cloudDocId) {
-                    const existing = merged.find(m => `${m.author.toLowerCase()}::${m.text.toLowerCase()}` === key);
+                    const existing = merged.find(m => makeWishKey(m.author, m.text) === key);
                     if (existing && !existing.cloudDocId) existing.cloudDocId = item.cloudDocId;
                 }
             });
@@ -2211,22 +2272,14 @@
             renderFloatingWishes();
         };
 
-        const deletedWishKeys = new Set();
-
         function applyIncomingCloudEvent(payload) {
             if (!payload || typeof payload !== 'object') return;
             if (payload.action === 'delete' && payload.key) {
-                deletedWishKeys.add(payload.key);
-                wishesData = wishesData.filter(item => {
-                    const key = `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
-                    return !deletedWishKeys.has(key);
-                });
-                persistWishesLocally();
-                renderFloatingWishes();
+                window.registerRemoteDeletedWishKey(payload.key);
                 return;
             }
             if (payload.author && payload.text) {
-                const key = `${payload.author.trim().toLowerCase()}::${payload.text.trim().toLowerCase()}`;
+                const key = makeWishKey(payload.author, payload.text);
                 if (deletedWishKeys.has(key)) return;
                 wishesData = mergeWishesLists([payload], wishesData);
                 persistWishesLocally();
@@ -2426,22 +2479,23 @@
         async function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
-            const delKey = `${removed.author.trim().toLowerCase()}::${removed.text.trim().toLowerCase()}`;
+            const delKey = makeWishKey(removed.author, removed.text);
             deletedWishKeys.add(delKey);
+            persistDeletedKeysLocally();
             persistWishesLocally();
             renderFloatingWishes();
-            showToast(`Deleted ${removed.author}'s wish 🗑️`, '🗑️');
-            if (removed.cloudDocId && typeof window.deleteWishFromLiveCloud === 'function') {
-                await window.deleteWishFromLiveCloud(removed.cloudDocId);
+            showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
+            if (typeof window.deleteWishFromLiveCloud === 'function') {
+                await window.deleteWishFromLiveCloud(removed.cloudDocId, delKey);
             }
-            const delPayload = { action: 'delete', key: delKey };
+            const delPayload = { action: 'delete', key: delKey, deletedAt: Date.now() };
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
             const delBody = JSON.stringify(delPayload);
             await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, delBody, 2),
-                pushWithRetry(NTFY_BACKUP_URL, delBody, 1)
+                pushWithRetry(NTFY_TOPIC_URL, delBody, 3),
+                pushWithRetry(NTFY_BACKUP_URL, delBody, 2)
             ]);
         }
 
