@@ -2079,22 +2079,253 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v16';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v16';
-        // Multi-provider CORS-enabled endpoints (works across Chrome profiles, Live Server, GitHub Pages & mobile phones)
-        const NTFY_CHANNEL_A = 'https://ntfy.sh/bbf_fab8_4th_anniv_live_stream_9860490';
-        const NTFY_CHANNEL_B = 'https://ntfy.sh/bbf_fab8_4th_anniv_snapshot_9860490';
-        const JSONBLOB_MIRROR_URL = 'https://jsonblob.com/api/jsonBlob/0195a8c4-7f2e-7b1a-9c3d-4e5f6a7b8c9d';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v20';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v20';
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/best_buddies_forever_fab8_2026_9860490';
         let wishesData = [];
         let floatingVisible = true;
-        let sseConnectionA = null;
-        let sseConnectionB = null;
+        let sseConnection = null;
 
         const deletedWishIds = new Set();
         const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
-            ? new BroadcastChannel('bbf_fab8_squad_channel_v16')
+            ? new BroadcastChannel('bbf_fab8_squad_channel_v20')
             : null;
-// ... existing code ... -->
+
+        function makeWishKey(author, text) {
+            return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
+        }
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function persistDeletedIdsLocally() {
+            try {
+                localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(Array.from(deletedWishIds).slice(-100)));
+            } catch (e) {}
+        }
+
+        function persistWishesLocally() {
+            const cleanList = wishesData
+                .filter(w => w && w.author && w.text && !deletedWishIds.has(String(w.id || '')))
+                .slice(0, 25);
+            try {
+                localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(cleanList));
+            } catch (e) {}
+            try {
+                sessionStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(cleanList));
+            } catch (e) {}
+            try {
+                const compact = cleanList.slice(0, 12).map(w => ({
+                    i: w.id,
+                    a: w.author,
+                    t: w.text,
+                    d: w.date || '13/11/2026',
+                    c: w.createdAt || Date.now()
+                }));
+                if (compact.length > 0) {
+                    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
+                    if (encoded.length < 3500) {
+                        window.location.hash = `wishes=${encoded}`;
+                    }
+                } else if (window.location.hash.startsWith('#wishes=')) {
+                    window.location.hash = '';
+                }
+            } catch (e) {}
+        }
+
+        function mergeWishesLists(incomingList, existingList) {
+            const map = new Map();
+            [...(incomingList || []), ...(existingList || [])].forEach(item => {
+                if (!item || !item.author || !item.text) return;
+                const id = String(item.id || `${item.author}_${item.createdAt || 0}`);
+                if (deletedWishIds.has(id)) return;
+                const dedupeKey = makeWishKey(item.author, item.text);
+                if (!map.has(dedupeKey)) {
+                    map.set(dedupeKey, {
+                        id,
+                        cloudDocId: item.cloudDocId || null,
+                        author: String(item.author).trim(),
+                        text: String(item.text).trim(),
+                        date: item.date || '13/11/2026',
+                        createdAt: Number(item.createdAt) || Date.now()
+                    });
+                } else if (item.cloudDocId && !map.get(dedupeKey).cloudDocId) {
+                    map.get(dedupeKey).cloudDocId = item.cloudDocId;
+                }
+            });
+            return Array.from(map.values())
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                .slice(0, 25);
+        }
+
+        function loadSavedWishesOnBoot() {
+            try {
+                const rawDel = localStorage.getItem(DELETED_IDS_STORAGE_KEY);
+                if (rawDel) {
+                    const parsedDel = JSON.parse(rawDel);
+                    if (Array.isArray(parsedDel)) {
+                        parsedDel.forEach(id => deletedWishIds.add(String(id)));
+                    }
+                }
+            } catch (e) {}
+
+            let loaded = [];
+            try {
+                const rawLocal = localStorage.getItem(WISHES_STORAGE_KEY);
+                if (rawLocal) loaded = loaded.concat(JSON.parse(rawLocal) || []);
+            } catch (e) {}
+            try {
+                const rawSession = sessionStorage.getItem(WISHES_STORAGE_KEY);
+                if (rawSession) loaded = loaded.concat(JSON.parse(rawSession) || []);
+            } catch (e) {}
+            try {
+                const hash = window.location.hash || '';
+                const match = hash.match(/wishes=([A-Za-z0-9+/=]+)/);
+                if (match && match[1]) {
+                    const decoded = JSON.parse(decodeURIComponent(escape(atob(match[1]))));
+                    if (Array.isArray(decoded)) {
+                        decoded.forEach(c => {
+                            if (c && c.a && c.t) {
+                                loaded.push({
+                                    id: c.i || `${Date.now()}_${Math.random()}`,
+                                    author: c.a,
+                                    text: c.t,
+                                    date: c.d || '13/11/2026',
+                                    createdAt: c.c || Date.now()
+                                });
+                            }
+                        });
+                    }
+                }
+            } catch (e) {}
+
+            wishesData = mergeWishesLists(loaded, []);
+            renderFloatingWishes();
+        }
+
+        window.registerRemoteDeletedWish = function(wishId, delKey) {
+            let changed = false;
+            if (wishId && !deletedWishIds.has(String(wishId))) {
+                deletedWishIds.add(String(wishId));
+                changed = true;
+            }
+            const beforeLen = wishesData.length;
+            wishesData = wishesData.filter(w => {
+                const idMatch = wishId && String(w.id) === String(wishId);
+                const keyMatch = delKey && makeWishKey(w.author, w.text) === delKey;
+                if (idMatch || keyMatch) {
+                    if (w.id) deletedWishIds.add(String(w.id));
+                    return false;
+                }
+                return true;
+            });
+            if (changed || wishesData.length !== beforeLen) {
+                persistDeletedIdsLocally();
+                persistWishesLocally();
+                renderFloatingWishes();
+            }
+        };
+
+        window.syncCloudWishesFromRealtime = function(cloudItems) {
+            if (!Array.isArray(cloudItems)) return;
+            wishesData = mergeWishesLists(cloudItems, wishesData);
+            persistWishesLocally();
+            renderFloatingWishes();
+        };
+
+        function renderFloatingWishes() {
+            const layer = document.getElementById('floating-wishes-layer');
+            const countLabel = document.getElementById('floating-wish-count-label');
+            const boardCounter = document.getElementById('wishes-board-counter');
+            const listEl = document.getElementById('wishes-list');
+
+            if (countLabel) {
+                countLabel.textContent = floatingVisible
+                    ? `Floating Wishes (${wishesData.length})`
+                    : `Show Wishes (${wishesData.length})`;
+            }
+
+            if (boardCounter) {
+                const uniqueAuthors = new Set(wishesData.map(w => w.author.trim().toLowerCase()));
+                boardCounter.textContent = `${Math.min(8, uniqueAuthors.size)} / 8 Buddies Floated (${wishesData.length} total)`;
+            }
+
+            if (listEl) {
+                if (wishesData.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
+                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
+                        </div>`;
+                } else {
+                    listEl.innerHTML = wishesData.map((w, idx) => `
+                        <div class="p-3 rounded-2xl bg-white/5 border border-pink-400/25 flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-display font-bold text-xs text-pink-300">${escapeHtml(w.author)}</span>
+                                    <span class="text-[10px] text-slate-400">${escapeHtml(w.date || '13/11/2026')}</span>
+                                </div>
+                                <p class="text-xs text-slate-200 mt-0.5 break-words">${escapeHtml(w.text)}</p>
+                            </div>
+                            <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete for all buddies" class="shrink-0 w-7 h-7 rounded-full bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 text-xs font-bold flex items-center justify-center transition cursor-pointer">
+                                ✕
+                            </button>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            if (!layer) return;
+            if (!floatingVisible || wishesData.length === 0) {
+                layer.innerHTML = '';
+                return;
+            }
+
+            const slots = [
+                { top: '14%', left: '3%' },
+                { top: '16%', right: '3%' },
+                { top: '36%', left: '2%' },
+                { top: '38%', right: '2%' },
+                { top: '58%', left: '3%' },
+                { top: '60%', right: '3%' },
+                { top: '76%', left: '4%' },
+                { top: '78%', right: '4%' }
+            ];
+
+            const gradients = [
+                'from-pink-600/90 to-purple-800/90 border-pink-300/60',
+                'from-cyan-600/90 to-blue-800/90 border-cyan-300/60',
+                'from-amber-500/90 to-rose-700/90 border-amber-200/60',
+                'from-emerald-600/90 to-teal-800/90 border-emerald-300/60'
+            ];
+
+            layer.innerHTML = wishesData.slice(0, 8).map((w, idx) => {
+                const pos = slots[idx % slots.length];
+                const grad = gradients[idx % gradients.length];
+                const posStyle = `top:${pos.top};${pos.left ? `left:${pos.left};` : `right:${pos.right};`}--drift-dur:${6.5 + (idx % 4)}s;--drift-delay:${idx * 0.45}s;`;
+                return `
+                    <div style="${posStyle}" class="floating-wish-bubble fixed max-w-[215px] sm:max-w-[250px] p-3 rounded-2xl bg-gradient-to-br ${grad} border backdrop-blur-md shadow-2xl text-white">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <span class="font-display font-bold text-xs text-amber-200 truncate">🎈 ${escapeHtml(w.author)}</span>
+                            <button type="button" onclick="deleteFloatingWish(${idx})" class="w-5 h-5 rounded-full bg-black/30 hover:bg-black/55 text-[10px] font-bold flex items-center justify-center cursor-pointer" title="Delete for all buddies">✕</button>
+                        </div>
+                        <p class="text-[11px] sm:text-xs leading-snug text-white/95 line-clamp-3">${escapeHtml(w.text)}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleFloatingWishes() {
+            floatingVisible = !floatingVisible;
+            renderFloatingWishes();
+            showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden 🙈', '🎈');
+        }
+
         function parseNtfyPayloadLine(line) {
             try {
                 const envelope = JSON.parse(line);
@@ -2105,85 +2336,70 @@
             }
         }
 
-        async function pullFromJsonBlobMirror() {
-            try {
-                const res = await fetch(`${JSONBLOB_MIRROR_URL}?_t=${Date.now()}`, {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    cache: 'no-store'
-                });
-                if (!res.ok) return false;
-                const data = await res.json();
-                if (data && Array.isArray(data.deletedIds)) {
-                    data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+        function handleIncomingCloudPacket(payload) {
+            if (!payload) return;
+            if (payload.action === 'delete') {
+                window.registerRemoteDeletedWish(payload.wishId, payload.key);
+            } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
+                if (Array.isArray(payload.deletedIds)) {
+                    payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
                     persistDeletedIdsLocally();
                 }
-                if (data && Array.isArray(data.wishes)) {
-                    wishesData = mergeWishesLists(data.wishes, wishesData);
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                }
-                return true;
-            } catch (e) {
-                return false;
+                wishesData = mergeWishesLists(payload.wishes, wishesData);
+                persistWishesLocally();
+                renderFloatingWishes();
+            } else if (payload.action === 'add' && payload.author && payload.text) {
+                wishesData = mergeWishesLists([payload], wishesData);
+                persistWishesLocally();
+                renderFloatingWishes();
             }
         }
 
-        async function pushToJsonBlobMirror() {
+        async function fetchSharedCloudWishes(manualNotify = false) {
+            const syncPill = document.getElementById('cloud-sync-pill');
             try {
-                const payload = {
-                    wishes: wishesData.slice(0, 25),
-                    deletedIds: Array.from(deletedWishIds).slice(-80),
-                    updatedAt: Date.now()
-                };
-                const res = await fetch(JSONBLOB_MIRROR_URL, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                return res.ok;
-            } catch (e) {
-                return false;
-            }
-        }
-
-        async function pullFromNtfyEndpoint(topicUrl) {
-            try {
-                const res = await fetch(`${topicUrl}/json?poll=1&since=all&_t=${Date.now()}`, {
+                const res = await fetch(`${NTFY_TOPIC_URL}/json?poll=1&since=all&_t=${Date.now()}`, {
                     method: 'GET',
                     cache: 'no-store'
                 });
-                if (!res.ok) return false;
+                if (!res.ok) throw new Error('Poll failed');
                 const text = await res.text();
                 const lines = text.split('\n').filter(Boolean);
-                const incoming = [];
                 lines.forEach(line => {
                     const payload = parseNtfyPayloadLine(line);
-                    if (!payload) return;
-                    if (payload.action === 'delete') {
-                        window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
-                    } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
-                        if (Array.isArray(payload.deletedIds)) {
-                            payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                            persistDeletedIdsLocally();
-                        }
-                        payload.wishes.forEach(w => incoming.push(w));
-                    } else if (payload.action === 'add' && payload.author && payload.text) {
-                        incoming.push(payload);
-                    }
+                    handleIncomingCloudPacket(payload);
                 });
-                if (incoming.length > 0) {
-                    wishesData = mergeWishesLists(incoming, wishesData);
-                    persistWishesLocally();
-                    renderFloatingWishes();
+                if (syncPill) {
+                    syncPill.textContent = `🟢 Multi-Device Cloud Synced (${wishesData.length})`;
                 }
-                return true;
+                if (manualNotify) {
+                    showToast(`Synced! ${wishesData.length} floating wish(es) active 🔄`, '🎈');
+                }
             } catch (e) {
-                return false;
+                if (syncPill) {
+                    syncPill.textContent = `🟡 Saved Locally (${wishesData.length}) — Use Copy Sync Link`;
+                }
+                if (manualNotify) {
+                    showToast('Cloud blocked by browser/network — use Copy Sync Link 🔗', '⚠️');
+                }
             }
+        }
+
+        function startLiveSquadStream() {
+            if (typeof EventSource === 'undefined') return;
+            try {
+                if (sseConnection) sseConnection.close();
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
+                sseConnection.onmessage = function(ev) {
+                    if (!ev || !ev.data) return;
+                    const payload = parseNtfyPayloadLine(ev.data);
+                    handleIncomingCloudPacket(payload);
+                    const syncPill = document.getElementById('cloud-sync-pill');
+                    if (syncPill) {
+                        syncPill.textContent = `🟢 Live Stream Active (${wishesData.length})`;
+                    }
+                };
+            } catch (e) {}
         }
 
         async function pushWithRetry(url, bodyStr, retries = 3) {
@@ -2197,28 +2413,9 @@
                     });
                     if (res.ok) return true;
                 } catch (e) {}
-                await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+                await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
             }
             return false;
-        }
-
-        async function fetchSharedCloudWishes(manualNotify = false) {
-            const syncPill = document.getElementById('cloud-sync-pill');
-            const [p1, p2, p3] = await Promise.all([
-                pullFromNtfyEndpoint(NTFY_CHANNEL_A),
-                pullFromNtfyEndpoint(NTFY_CHANNEL_B),
-                pullFromJsonBlobMirror()
-            ]);
-            if (syncPill) {
-                if (p1 || p2 || p3) {
-                    syncPill.textContent = `🟢 Multi-Device Cloud Synced (${wishesData.length})`;
-                } else {
-                    syncPill.textContent = `🟡 Offline / Use Copy Sync Link (${wishesData.length})`;
-                }
-            }
-            if (manualNotify) {
-                showToast(`Synced! ${wishesData.length} floating wish(es) active 🔄`, '🎈');
-            }
         }
 
         async function pushSharedCloudWishes(newWish) {
@@ -2234,7 +2431,7 @@
             const snapshotPayload = {
                 action: 'snapshot',
                 wishes: wishesData.slice(0, 20),
-                deletedIds: Array.from(deletedWishIds).slice(-60),
+                deletedIds: Array.from(deletedWishIds).slice(-80),
                 updatedAt: Date.now()
             };
 
@@ -2245,22 +2442,17 @@
                 await window.saveWishToLiveCloud(addPayload);
             }
 
-            const addStr = JSON.stringify(addPayload);
-            const snapStr = JSON.stringify(snapshotPayload);
-            const [r1, r2, r3] = await Promise.all([
-                pushWithRetry(NTFY_CHANNEL_A, addStr, 3),
-                pushWithRetry(NTFY_CHANNEL_B, snapStr, 3),
-                pushToJsonBlobMirror()
-            ]);
+            const ok1 = await pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(addPayload), 3);
+            const ok2 = await pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(snapshotPayload), 2);
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = (r1 || r2 || r3)
+                syncPill.textContent = (ok1 || ok2)
                     ? `🟢 Multi-Device Cloud Synced (${wishesData.length})`
                     : `🟡 Saved Locally — Tap Copy Sync Link`;
             }
         }
-// ... existing code ... -->
+
         async function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
@@ -2271,6 +2463,7 @@
             persistWishesLocally();
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
+
             if (typeof window.deleteWishFromLiveCloud === 'function') {
                 await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
@@ -2278,16 +2471,634 @@
             const snapPayload = {
                 action: 'snapshot',
                 wishes: wishesData.slice(0, 20),
-                deletedIds: Array.from(deletedWishIds).slice(-60),
+                deletedIds: Array.from(deletedWishIds).slice(-80),
                 updatedAt: Date.now()
             };
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
             await Promise.all([
-                pushWithRetry(NTFY_CHANNEL_A, JSON.stringify(delPayload), 3),
-                pushWithRetry(NTFY_CHANNEL_B, JSON.stringify(snapPayload), 3),
-                pushToJsonBlobMirror()
+                pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(delPayload), 3),
+                pushWithRetry(NTFY_TOPIC_URL, JSON.stringify(snapPayload), 2)
             ]);
         }
-// ... existing code ... -->
+
+        function copySquadSyncLink() {
+            persistWishesLocally();
+            const shareUrl = window.location.href;
+            const tempInput = document.createElement('input');
+            tempInput.value = shareUrl;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            try {
+                document.execCommand('copy');
+                showToast('Live Squad Link (with all floating wishes) copied! 🔗', '🎈');
+            } catch (e) {
+                showToast('Copy the URL from your browser address bar 🔗', '🎈');
+            }
+            document.body.removeChild(tempInput);
+        }
+
+        if (squadBroadcast) {
+            squadBroadcast.onmessage = function(ev) {
+                handleIncomingCloudPacket(ev.data);
+            };
+        }
+
+        window.addEventListener('storage', function(ev) {
+            if (ev.key === WISHES_STORAGE_KEY || ev.key === DELETED_IDS_STORAGE_KEY) {
+                loadSavedWishesOnBoot();
+            }
+        });
+
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                fetchSharedCloudWishes(false);
+            }
+        });
+
+        window.addEventListener('online', function() {
+            startLiveSquadStream();
+            fetchSharedCloudWishes(false);
+        });
+
+        function addWishAndSync(author, text, cardMeta) {
+            const newWish = {
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                author: String(author).trim(),
+                text: String(text).trim(),
+                date: '13/11/2026',
+                createdAt: Date.now()
+            };
+            wishesData = mergeWishesLists([newWish], wishesData);
+            persistWishesLocally();
+            renderFloatingWishes();
+            triggerConfettiBurst(0.5, 0.4);
+            pushSharedCloudWishes(newWish);
+
+            if (cardMeta) {
+                sendCardAndOpenShareModal(cardMeta);
+            }
+        }
+
+        const wishFormEl = document.getElementById('wish-form');
+        if (wishFormEl) {
+            wishFormEl.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const nameInput = document.getElementById('wish-name');
+                const textInput = document.getElementById('wish-text');
+                const author = nameInput ? nameInput.value.trim() : '';
+                const text = textInput ? textInput.value.trim() : '';
+                if (!author || !text) return;
+
+                addWishAndSync(author, text, {
+                    type: '🎈 4th Anniversary Floating Wish',
+                    headline: `Anniversary Wish from ${author}`,
+                    body: text,
+                    author: author
+                });
+
+                if (textInput) textInput.value = '';
+            });
+        }
+
+        function sendGopiBirthdayWish() {
+            const senderInput = document.getElementById('gopi-bday-sender');
+            const msgInput = document.getElementById('gopi-bday-msg');
+            const sender = (senderInput && senderInput.value.trim()) ? senderInput.value.trim() : 'The Fab 8 Squad';
+            const msg = (msgInput && msgInput.value.trim()) ? msgInput.value.trim() : 'Happy Birthday Gopi bhai! 😂🎂🥳';
+
+            addWishAndSync(`${sender} → Gopi 🎂`, msg, {
+                type: '🎂 Happy Birthday Gopi Special!',
+                headline: `Happy Birthday Gopi 😂🥳`,
+                body: msg,
+                author: sender
+            });
+        }
+
+        // Initialize wishes on page load + start live cross-device polling & stream
+        loadSavedWishesOnBoot();
+        startLiveSquadStream();
+        fetchSharedCloudWishes(false);
+        setInterval(() => fetchSharedCloudWishes(false), 7000);
+
+        // ==========================================
+        // 5. SHAREABLE CARD MODAL, EMAIL & WHATSAPP
+        // ==========================================
+        let currentShareCardData = {
+            type: '🎈 4th Anniversary Wish',
+            headline: 'Happy 4th Anniversary!',
+            body: 'Four years of 😍Best buddies forever🥳!',
+            author: 'The Fab 8'
+        };
+
+        function sendCardAndOpenShareModal(cardData) {
+            currentShareCardData = cardData;
+            const modal = document.getElementById('share-card-modal');
+            const badgeType = document.getElementById('card-badge-type');
+            const headline = document.getElementById('card-headline');
+            const bodyText = document.getElementById('card-body-text');
+            const authorTag = document.getElementById('card-author-tag');
+            const emailBadge = document.getElementById('email-delivery-badge');
+            const mailtoBtn = document.getElementById('mailto-fallback-btn');
+
+            if (badgeType) badgeType.textContent = cardData.type;
+            if (headline) headline.textContent = cardData.headline;
+            if (bodyText) bodyText.textContent = cardData.body;
+            if (authorTag) authorTag.textContent = `— ${cardData.author}`;
+
+            const subject = encodeURIComponent(`[😍Best buddies forever🥳] ${cardData.headline}`);
+            const mailBody = encodeURIComponent(`${cardData.type}\n\n${cardData.headline}\n"${cardData.body}"\n\n— ${cardData.author}\nEst. 13/11/2022 • 4th Anniversary`);
+            if (mailtoBtn) {
+                mailtoBtn.href = `mailto:mk9860490@gmail.com?subject=${subject}&body=${mailBody}`;
+            }
+
+            if (emailBadge) {
+                emailBadge.textContent = '✉️ Sending card to mk9860490@gmail.com...';
+            }
+
+            fetch('https://formsubmit.co/ajax/mk9860490@gmail.com', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    _subject: `😍Best buddies forever🥳 — ${cardData.headline}`,
+                    Card_Type: cardData.type,
+                    Headline: cardData.headline,
+                    Message: cardData.body,
+                    From: cardData.author
+                })
+            }).then(() => {
+                if (emailBadge) emailBadge.textContent = '✅ Card Sent to mk9860490@gmail.com!';
+            }).catch(() => {
+                if (emailBadge) emailBadge.textContent = '✅ Card Ready to Share!';
+            });
+
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        function closeShareModal() {
+            const modal = document.getElementById('share-card-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function shareCardToWhatsApp() {
+            persistWishesLocally();
+            const liveUrl = window.location.href;
+            const msg = `*😍Best buddies forever🥳 — 4th Anniversary*\n\n*${currentShareCardData.type}*\n*${currentShareCardData.headline}*\n"${currentShareCardData.body}"\n— _${currentShareCardData.author}_\n\n🎈 View & float your wish live:\n${liveUrl}`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        function downloadCardAsImage() {
+            const canvas = document.getElementById('card-export-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 900, 540);
+            grad.addColorStop(0, '#1e1b4b');
+            grad.addColorStop(0.5, '#581c87');
+            grad.addColorStop(1, '#831843');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 900, 540);
+
+            ctx.strokeStyle = 'rgba(244, 114, 182, 0.65)';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(24, 24, 852, 492);
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 22px Inter, sans-serif';
+            ctx.fillText('😍 Best buddies forever 🥳  •  4TH ANNIVERSARY', 56, 78);
+
+            ctx.fillStyle = '#f9a8d4';
+            ctx.font = 'bold 20px Inter, sans-serif';
+            ctx.fillText(currentShareCardData.type, 56, 125);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 38px Fredoka, sans-serif';
+            ctx.fillText(currentShareCardData.headline.slice(0, 42), 56, 185);
+
+            ctx.fillStyle = '#f1f5f9';
+            ctx.font = '24px Inter, sans-serif';
+            const words = currentShareCardData.body.split(' ');
+            let line = '';
+            let y = 245;
+            words.forEach(word => {
+                const test = line + word + ' ';
+                if (ctx.measureText(test).width > 780) {
+                    ctx.fillText(line, 56, y);
+                    line = word + ' ';
+                    y += 36;
+                } else {
+                    line = test;
+                }
+            });
+            ctx.fillText(line, 56, y);
+
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = 'bold 22px Inter, sans-serif';
+            ctx.fillText(`— ${currentShareCardData.author}`, 56, 475);
+            ctx.fillText('13/11/2022 – 13/11/2026', 610, 475);
+
+            const link = document.createElement('a');
+            link.download = 'best-buddies-forever-card.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast('Card downloaded as PNG! 🖼️', '🎉');
+        }
+
+        // ==========================================
+        // 6. VIRTUAL CAKE & SUPERLATIVE WHEEL
+        // ==========================================
+        function blowOutCandles() {
+            document.querySelectorAll('.flame').forEach(f => f.classList.add('blown-out'));
+            const statusText = document.getElementById('cake-status-text');
+            if (statusText) {
+                statusText.textContent = '🥳 Wish made! Happy 4th Anniversary 😍Best buddies forever🥳!';
+            }
+            triggerConfettiBurst(0.35, 0.5);
+            showToast('All 4 candles blown out! Make a squad wish! 🎂', '🥳');
+        }
+
+        function relightCandles() {
+            document.querySelectorAll('.flame').forEach(f => f.classList.remove('blown-out'));
+            const statusText = document.getElementById('cake-status-text');
+            if (statusText) {
+                statusText.textContent = 'Tap the cake below to blow out all 4 candles! 🌬️';
+            }
+        }
+
+        const superlativePrompts = [
+            "Most likely to say 'I'm 5 mins away' while still in bed",
+            "Most likely to send a 4-minute voice note instead of texting",
+            "Most likely to plan a Goa trip that actually happens",
+            "Most likely to reply to a Sunday message on Wednesday",
+            "Most likely to turn any photo into a WhatsApp sticker",
+            "Most likely to order dessert before checking the main menu",
+            "Most likely to drop deep 2:30 AM life philosophy",
+            "Most likely to hype every single group selfie within 3 seconds"
+        ];
+        let lastSuperlativeResult = null;
+
+        function spinSuperlative() {
+            const promptEl = document.getElementById('superlative-prompt');
+            const winnerEl = document.getElementById('wheel-winner');
+            const emojiEl = document.getElementById('wheel-winner-emoji');
+            const shareBtn = document.getElementById('share-superlative-btn');
+            const spinBtn = document.getElementById('spin-wheel-btn');
+
+            if (spinBtn) spinBtn.disabled = true;
+            let ticks = 0;
+            const interval = setInterval(() => {
+                const randPrompt = superlativePrompts[Math.floor(Math.random() * superlativePrompts.length)];
+                const randBuddy = fab8Roster[Math.floor(Math.random() * fab8Roster.length)];
+                if (promptEl) promptEl.textContent = `"${randPrompt}"`;
+                if (winnerEl) winnerEl.textContent = randBuddy.name;
+                if (emojiEl) emojiEl.textContent = randBuddy.emoji;
+                ticks++;
+                if (ticks >= 14) {
+                    clearInterval(interval);
+                    if (spinBtn) spinBtn.disabled = false;
+                    if (shareBtn) shareBtn.classList.remove('hidden');
+                    lastSuperlativeResult = {
+                        type: '🎰 Squad Superlative Winner',
+                        headline: `${winnerEl.textContent} ${emojiEl.textContent} Wins!`,
+                        body: `${promptEl.textContent} — Voted by 😍Best buddies forever🥳!`,
+                        author: 'Squad Superlative Wheel'
+                    };
+                    triggerConfettiBurst(0.65, 0.5);
+                }
+            }, 75);
+        }
+
+        function shareLastSuperlative() {
+            if (lastSuperlativeResult) sendCardAndOpenShareModal(lastSuperlativeResult);
+        }
+
+        // ==========================================
+        // 7. GAME 1: FAB 8 HOT POTATO & PASS-THE-BOMB
+        // ==========================================
+        let bombHolderIdx = 0;
+        let bombDirection = 1;
+        let bombTimer = null;
+        let bombTicksLeft = 0;
+        let lastBombLoser = null;
+
+        function renderHotPotatoRing(exploded = false) {
+            const ringEl = document.getElementById('hot-potato-ring');
+            if (!ringEl) return;
+            ringEl.innerHTML = fab8Roster.map((b, idx) => {
+                const hasBomb = idx === bombHolderIdx;
+                const activeCls = hasBomb
+                    ? (exploded
+                        ? 'bg-rose-600/40 border-rose-400 scale-105 shadow-[0_0_25px_rgba(244,63,94,0.8)]'
+                        : 'bg-amber-500/25 border-amber-400 scale-105 shadow-[0_0_22px_rgba(251,191,36,0.65)]')
+                    : 'bg-white/5 border-white/10 opacity-80';
+                return `
+                    <div class="p-3.5 rounded-2xl border ${activeCls} text-center transition-all duration-150">
+                        <div class="text-2xl mb-1">${hasBomb ? (exploded ? '💥' : '💣') : b.emoji}</div>
+                        <div class="font-display font-bold text-sm text-white">${b.name}</div>
+                        <div class="text-[10px] text-slate-300 truncate">${b.title}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function stepBomb() {
+            bombHolderIdx = (bombHolderIdx + bombDirection + fab8Roster.length) % fab8Roster.length;
+            renderHotPotatoRing(false);
+            const holder = fab8Roster[bombHolderIdx];
+            const titleEl = document.getElementById('bomb-status-title');
+            if (titleEl) titleEl.textContent = `💣 Bomb is with ${holder.name} ${holder.emoji}!`;
+        }
+
+        function startHotPotatoGame() {
+            clearInterval(bombTimer);
+            bombHolderIdx = Math.floor(Math.random() * fab8Roster.length);
+            bombDirection = 1;
+            bombTicksLeft = 14 + Math.floor(Math.random() * 14);
+
+            document.getElementById('bomb-pass-btn').disabled = false;
+            document.getElementById('bomb-reverse-btn').disabled = false;
+            document.getElementById('bomb-share-btn').classList.add('hidden');
+            document.getElementById('bomb-status-sub').textContent = 'Hurry! Tap "Pass Now!" or "Reverse" before the fuse runs out!';
+
+            renderHotPotatoRing(false);
+            bombTimer = setInterval(() => {
+                bombTicksLeft--;
+                if (bombTicksLeft <= 0) {
+                    clearInterval(bombTimer);
+                    document.getElementById('bomb-pass-btn').disabled = true;
+                    document.getElementById('bomb-reverse-btn').disabled = true;
+                    document.getElementById('bomb-share-btn').classList.remove('hidden');
+                    renderHotPotatoRing(true);
+                    const loser = fab8Roster[bombHolderIdx];
+                    lastBombLoser = loser;
+                    document.getElementById('bomb-status-title').textContent = `💥 BOOM! ${loser.name} ${loser.emoji} got caught!`;
+                    document.getElementById('bomb-status-sub').textContent = `${loser.name} owes the Fab 8 squad a treat or funny voice note!`;
+                    triggerConfettiBurst(0.5, 0.5);
+                } else {
+                    stepBomb();
+                }
+            }, 340);
+        }
+
+        function manualPassBomb() {
+            if (bombTicksLeft > 0) stepBomb();
+        }
+
+        function reverseBombDirection() {
+            if (bombTicksLeft > 0) {
+                bombDirection *= -1;
+                stepBomb();
+                showToast('Direction reversed! 🔄', '⚡');
+            }
+        }
+
+        function shareBombLoserCard() {
+            if (!lastBombLoser) return;
+            sendCardAndOpenShareModal({
+                type: '💣 Hot Potato Dare Winner',
+                headline: `${lastBombLoser.name} ${lastBombLoser.emoji} Caught the Bomb!`,
+                body: `${lastBombLoser.name} (${lastBombLoser.title}) officially owes the Fab 8 squad a party treat!`,
+                author: 'Fab 8 Hot Potato Arena'
+            });
+        }
+
+        renderHotPotatoRing(false);
+
+        // ==========================================
+        // 8. GAME 2: FAB 8 MEMORY FLIP & SQUAD MATCH
+        // ==========================================
+        let memCards = [];
+        let memFlipped = [];
+        let memMatchedCount = 0;
+        let memMoves = 0;
+        let memLock = false;
+
+        function initMemoryGame() {
+            memFlipped = [];
+            memMatchedCount = 0;
+            memMoves = 0;
+            memLock = false;
+            document.getElementById('mem-moves').textContent = '0';
+            document.getElementById('mem-pairs').textContent = '0/8';
+            document.getElementById('memory-win-banner').classList.add('hidden');
+
+            const deck = [];
+            fab8Roster.forEach((b, idx) => {
+                deck.push({ pairId: idx, label: b.name, sub: b.emoji, kind: 'Buddy' });
+                deck.push({ pairId: idx, label: b.title, sub: '✨', kind: 'Title' });
+            });
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            memCards = deck;
+
+            const grid = document.getElementById('memory-grid');
+            if (!grid) return;
+            grid.innerHTML = memCards.map((c, idx) => `
+                <div id="mem-tile-${idx}" onclick="flipMemoryTile(${idx})" class="mem-tile cursor-pointer select-none">
+                    <div class="mem-tile-inner">
+                        <div class="mem-tile-front bg-gradient-to-br from-[#1f164d] to-[#2e165c] border border-purple-400/35 text-center shadow-lg">
+                            <span class="text-2xl">🥳</span>
+                            <span class="text-[10px] font-bold text-purple-200 mt-1">FAB 8</span>
+                        </div>
+                        <div class="mem-tile-back bg-[#141038] border-2 border-cyan-400/50 text-center shadow-xl">
+                            <span class="text-xl mb-1">${c.sub}</span>
+                            <span class="font-display font-bold text-xs sm:text-sm text-white leading-tight">${c.label}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function flipMemoryTile(idx) {
+            if (memLock) return;
+            const tile = document.getElementById(`mem-tile-${idx}`);
+            if (!tile || tile.classList.contains('revealed') || tile.classList.contains('matched')) return;
+
+            tile.classList.add('revealed');
+            memFlipped.push(idx);
+
+            if (memFlipped.length === 2) {
+                memMoves++;
+                document.getElementById('mem-moves').textContent = String(memMoves);
+                const [i1, i2] = memFlipped;
+                if (memCards[i1].pairId === memCards[i2].pairId) {
+                    document.getElementById(`mem-tile-${i1}`).classList.add('matched');
+                    document.getElementById(`mem-tile-${i2}`).classList.add('matched');
+                    memFlipped = [];
+                    memMatchedCount++;
+                    document.getElementById('mem-pairs').textContent = `${memMatchedCount}/8`;
+                    if (memMatchedCount === 8) {
+                        document.getElementById('memory-win-banner').classList.remove('hidden');
+                        document.getElementById('memory-win-sub').textContent = `Matched all 8 buddies in ${memMoves} moves!`;
+                        triggerConfettiBurst(0.5, 0.5);
+                    }
+                } else {
+                    memLock = true;
+                    setTimeout(() => {
+                        document.getElementById(`mem-tile-${i1}`)?.classList.remove('revealed');
+                        document.getElementById(`mem-tile-${i2}`)?.classList.remove('revealed');
+                        memFlipped = [];
+                        memLock = false;
+                    }, 650);
+                }
+            }
+        }
+
+        function shareMemoryScoreCard() {
+            sendCardAndOpenShareModal({
+                type: '🃏 Fab 8 Memory Match Champion',
+                headline: `Cleared in ${memMoves} Moves!`,
+                body: `Matched all 8 legends of 😍Best buddies forever🥳 with their iconic titles in ${memMoves} moves!`,
+                author: 'Fab 8 Memory Arena'
+            });
+        }
+
+        initMemoryGame();
+
+        // ==========================================
+        // 9. GAME 3: SQUAD STICKER BLITZ ARCADE
+        // ==========================================
+        let arcadeRunning = false;
+        let arcadeScore = 0;
+        let arcadeCombo = 1;
+        let arcadeTimeLeft = 25;
+        let arcadePlayerPct = 50;
+        let arcadeItems = [];
+        let arcadeClock = null;
+        let arcadeLoopId = null;
+        let arcadeSpawnCounter = 0;
+
+        const arcadeArena = document.getElementById('arcade-arena');
+        const arcadePlayer = document.getElementById('arcade-player');
+        const arcadeBuddySelect = document.getElementById('arcade-buddy-select');
+
+        if (arcadeBuddySelect && arcadePlayer) {
+            arcadeBuddySelect.addEventListener('change', () => {
+                arcadePlayer.textContent = arcadeBuddySelect.value;
+            });
+        }
+
+        function moveArcadePlayer(clientX) {
+            if (!arcadeArena || !arcadePlayer) return;
+            const rect = arcadeArena.getBoundingClientRect();
+            const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+            arcadePlayerPct = pct;
+            arcadePlayer.style.left = `${pct}%`;
+        }
+
+        if (arcadeArena) {
+            arcadeArena.addEventListener('mousemove', e => moveArcadePlayer(e.clientX));
+            arcadeArena.addEventListener('touchmove', e => {
+                if (e.touches && e.touches[0]) moveArcadePlayer(e.touches[0].clientX);
+            }, { passive: true });
+        }
+
+        function startStickerBlitz() {
+            if (arcadeRunning) return;
+            arcadeRunning = true;
+            arcadeScore = 0;
+            arcadeCombo = 1;
+            arcadeTimeLeft = 25;
+            arcadeItems = [];
+            document.getElementById('arcade-score').textContent = '0';
+            document.getElementById('arcade-combo').textContent = '1x';
+            document.getElementById('arcade-timer').textContent = '25s';
+            document.getElementById('arcade-overlay').classList.add('hidden');
+            document.getElementById('arcade-items-layer').innerHTML = '';
+
+            clearInterval(arcadeClock);
+            arcadeClock = setInterval(() => {
+                arcadeTimeLeft--;
+                document.getElementById('arcade-timer').textContent = `${arcadeTimeLeft}s`;
+                if (arcadeTimeLeft <= 0) {
+                    endStickerBlitz();
+                }
+            }, 1000);
+
+            arcadeLoopId = requestAnimationFrame(stepStickerBlitz);
+        }
+
+        function stepStickerBlitz() {
+            if (!arcadeRunning) return;
+            const layer = document.getElementById('arcade-items-layer');
+            arcadeSpawnCounter++;
+            if (arcadeSpawnCounter % 24 === 0) {
+                const pool = [
+                    { emoji: '🍳', pts: 15, bad: false },
+                    { emoji: '🎂', pts: 25, bad: false },
+                    { emoji: '😂', pts: 10, bad: false },
+                    { emoji: '🥳', pts: 20, bad: false },
+                    { emoji: '⏳', pts: -20, bad: true }
+                ];
+                const pick = pool[Math.floor(Math.random() * pool.length)];
+                const el = document.createElement('div');
+                el.className = 'absolute text-2xl sm:text-3xl -translate-x-1/2 pointer-events-none';
+                el.textContent = pick.emoji;
+                const xPct = 10 + Math.random() * 80;
+                el.style.left = `${xPct}%`;
+                el.style.top = '-24px';
+                layer.appendChild(el);
+                arcadeItems.push({ el, xPct, yPx: -24, speed: 2.6 + Math.random() * 1.8, ...pick });
+            }
+
+            const arenaHeight = arcadeArena ? arcadeArena.clientHeight : 280;
+            arcadeItems = arcadeItems.filter(item => {
+                item.yPx += item.speed;
+                item.el.style.top = `${item.yPx}px`;
+
+                if (item.yPx >= arenaHeight - 56 && item.yPx <= arenaHeight - 16 && Math.abs(item.xPct - arcadePlayerPct) < 13) {
+                    if (item.bad) {
+                        arcadeCombo = 1;
+                        arcadeScore = Math.max(0, arcadeScore + item.pts);
+                    } else {
+                        arcadeScore += item.pts * arcadeCombo;
+                        arcadeCombo = Math.min(5, arcadeCombo + 1);
+                    }
+                    document.getElementById('arcade-score').textContent = String(arcadeScore);
+                    document.getElementById('arcade-combo').textContent = `${arcadeCombo}x`;
+                    item.el.remove();
+                    return false;
+                }
+
+                if (item.yPx > arenaHeight + 20) {
+                    item.el.remove();
+                    return false;
+                }
+                return true;
+            });
+
+            arcadeLoopId = requestAnimationFrame(stepStickerBlitz);
+        }
+
+        function endStickerBlitz() {
+            arcadeRunning = false;
+            clearInterval(arcadeClock);
+            cancelAnimationFrame(arcadeLoopId);
+            const playerLabel = arcadeBuddySelect ? arcadeBuddySelect.value : 'Buddy';
+            document.getElementById('arcade-overlay').classList.remove('hidden');
+            document.getElementById('arcade-overlay-title').textContent = `🏁 Time's Up! Score: ${arcadeScore}`;
+            document.getElementById('arcade-overlay-sub').textContent = `${playerLabel} scored ${arcadeScore} pts in Squad Sticker Blitz!`;
+            document.getElementById('arcade-share-btn').classList.remove('hidden');
+            triggerConfettiBurst(0.5, 0.5);
+        }
+
+        function shareArcadeScoreCard() {
+            const playerLabel = arcadeBuddySelect ? arcadeBuddySelect.value : 'Buddy';
+            sendCardAndOpenShareModal({
+                type: '🍳 Squad Sticker Blitz High Score',
+                headline: `${playerLabel} Scored ${arcadeScore} Pts!`,
+                body: `Caught Bread Omelets, Birthday Cakes & Memes on 😍Best buddies forever🥳! Can anyone beat ${arcadeScore} pts?`,
+                author: playerLabel
+            });
+        }
+    </script>
+</body>
+</html>
