@@ -2366,7 +2366,7 @@
         }
 
         async function pullFromNtfyChannel(url) {
-            const res = await fetch(`${url}/json?poll=1&since=24h&_t=${Date.now()}`, {
+            const res = await fetch(`${url}/json?poll=1&_t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
@@ -2437,7 +2437,7 @@
             if (typeof EventSource === 'undefined') return;
             try {
                 if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=24h`);
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse`);
                 sseConnection.onmessage = function(ev) {
                     if (!ev || !ev.data) return;
                     const payload = parseNtfyPayloadLine(ev.data);
