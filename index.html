@@ -1184,6 +1184,35 @@
                     </button>
                 </div>
 
+                <!-- Anniversary Wish Submission Form & Live Wall -->
+                <div class="glass-dark rounded-3xl p-6 sm:p-8 shadow-2xl border-pink-500/35 mb-6">
+                    <h3 class="font-display text-2xl font-bold text-white mb-1">Sign the Anniversary Wall ✍️</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 mb-4">
+                        Drop your message below — it floats across the screen for all 8 buddies and stays saved!
+                    </p>
+
+                    <form id="wish-form" class="space-y-3 mb-5">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <input type="text" id="wish-name" required placeholder="Your Name (e.g. Gowri)" class="px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
+                            <input type="text" id="wish-text" required placeholder="Write your 4th Anniversary wish..." class="sm:col-span-2 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-pink-400">
+                        </div>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <button type="submit" class="px-5 py-3 rounded-xl neon-animated-bg text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-pink-500/30 hover:scale-105 transition cursor-pointer">
+                                🎈 Float My Wish!
+                            </button>
+                            <button type="button" onclick="copySquadSyncLink()" class="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/40 text-cyan-200 font-bold text-xs transition cursor-pointer">
+                                🔗 Copy Live Sync Link
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="flex items-center justify-between text-xs font-bold text-slate-300 mb-2.5">
+                        <span>Live Squad Wish Feed</span>
+                        <span id="wishes-board-counter" class="text-amber-300">0 / 8 Buddies Floated</span>
+                    </div>
+                    <div id="wishes-list" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                </div>
+
                 <!-- Squad Superlative Spinner -->
                 <div class="glass-dark rounded-3xl p-8 text-center shadow-2xl flex flex-col items-center justify-between">
                     <div>
@@ -2310,7 +2339,7 @@
         }
 
         async function pullFromNtfyChannel(url) {
-            const res = await fetch(`${url}/json?poll=1&since=all&_t=${Date.now()}`, {
+            const res = await fetch(`${url}/json?poll=1&since=12h&_t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
@@ -2378,7 +2407,7 @@
             if (typeof EventSource === 'undefined') return;
             try {
                 if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=12h`);
                 sseConnection.onmessage = function(ev) {
                     if (!ev || !ev.data) return;
                     const payload = parseNtfyPayloadLine(ev.data);
