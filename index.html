@@ -2366,7 +2366,8 @@
         }
 
         async function pullFromNtfyChannel(url) {
-            const res = await fetch(`${url}/json?poll=1&_t=${Date.now()}`, {
+            // Note: ntfy.sh requires since=12h with poll=1 (bare poll=1 defaults to since=latest and returns 0 messages!)
+            const res = await fetch(`${url}/json?poll=1&since=12h&_t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
@@ -2437,7 +2438,7 @@
             if (typeof EventSource === 'undefined') return;
             try {
                 if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse`);
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=12h`);
                 sseConnection.onmessage = function(ev) {
                     if (!ev || !ev.data) return;
                     const payload = parseNtfyPayloadLine(ev.data);
@@ -2581,8 +2582,18 @@
             }
         });
 
+        window.addEventListener('hashchange', function() {
+            loadSavedWishesOnBoot();
+        });
+
+        window.addEventListener('focus', function() {
+            loadSavedWishesOnBoot();
+            fetchSharedCloudWishes(false);
+        });
+
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden) {
+                loadSavedWishesOnBoot();
                 fetchSharedCloudWishes(false);
             }
         });
