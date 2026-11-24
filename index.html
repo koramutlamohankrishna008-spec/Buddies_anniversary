@@ -2079,17 +2079,56 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v9';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v9';
-        // Multi-mirror CORS-free cloud sync (primary ntfy.sh stream + secondary mirror + BroadcastChannel)
-        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026_v9';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v10';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v10';
+        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026_v10';
         const NTFY_TOPIC_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}`;
         const NTFY_BACKUP_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}_mirror`;
+        // Persistent Key-Value Cloud Store (stores full wishes state so refresh always restores it)
+        const KV_STATE_URL = 'https://kvdb.io/Dr8sK2mN9pQ4wX7vL5zB1c/fab8_wishes_state_v10';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
 
         const deletedWishIds = new Set();
+
+        // IndexedDB Helper (survives refreshes even in strict browser modes)
+        function saveToIndexedDB(key, val) {
+            try {
+                const req = indexedDB.open('BBF_Fab8_DB', 1);
+                req.onupgradeneeded = function(e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+                };
+                req.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const tx = db.transaction('kv', 'readwrite');
+                    tx.objectStore('kv').put(val, key);
+                };
+            } catch (err) {}
+        }
+
+        function loadFromIndexedDB(key) {
+            return new Promise((resolve) => {
+                try {
+                    const req = indexedDB.open('BBF_Fab8_DB', 1);
+                    req.onupgradeneeded = function(e) {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+                    };
+                    req.onsuccess = function(e) {
+                        const db = e.target.result;
+                        const tx = db.transaction('kv', 'readonly');
+                        const getReq = tx.objectStore('kv').get(key);
+                        getReq.onsuccess = () => resolve(getReq.result || null);
+                        getReq.onerror = () => resolve(null);
+                    };
+                    req.onerror = () => resolve(null);
+                } catch (err) {
+                    resolve(null);
+                }
+            });
+        }
 
         function makeWishKey(author, text) {
             return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
@@ -2117,6 +2156,7 @@
             const arr = Array.from(deletedWishIds);
             try { window.localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
             try { window.sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
+            saveToIndexedDB(DELETED_IDS_STORAGE_KEY, arr);
             writeWindowNameStore();
         }
 
@@ -2141,7 +2181,7 @@
         let squadBroadcast = null;
         try {
             if (typeof BroadcastChannel !== 'undefined') {
-                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel_v9');
+                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel_v10');
                 squadBroadcast.onmessage = function(ev) {
                     if (ev && ev.data) applyIncomingCloudEvent(ev.data);
                 };
@@ -2170,7 +2210,7 @@
             }
         });
 
-        function loadSavedWishesOnBoot() {
+        async function loadSavedWishesOnBoot() {
             const winStore = readWindowNameStore();
             if (Array.isArray(winStore.deletedIds)) {
                 winStore.deletedIds.forEach(id => deletedWishIds.add(String(id)));
@@ -2187,6 +2227,11 @@
                 } catch (e) {}
             });
 
+            const idbDeleted = await loadFromIndexedDB(DELETED_IDS_STORAGE_KEY);
+            if (Array.isArray(idbDeleted)) {
+                idbDeleted.forEach(id => deletedWishIds.add(String(id)));
+            }
+
             let loaded = Array.isArray(winStore.wishes) ? [...winStore.wishes] : [];
             [window.localStorage, window.sessionStorage].forEach(store => {
                 try {
@@ -2200,12 +2245,22 @@
                 } catch (e) {}
             });
 
-            // Also merge any wishes passed via URL query (?wishes=...) or hash (#wishes=...)
+            const idbWishes = await loadFromIndexedDB(WISHES_STORAGE_KEY);
+            if (Array.isArray(idbWishes)) {
+                loaded = mergeWishesLists(loaded, idbWishes);
+            }
+
+            // Also merge any wishes passed via URL hash (#wishes=...) or query (?wishes=...)
             try {
-                const params = new URLSearchParams(window.location.search);
-                let encoded = params.get('wishes');
-                if (!encoded && window.location.hash && window.location.hash.includes('wishes=')) {
-                    encoded = new URLSearchParams(window.location.hash.slice(1)).get('wishes');
+                let encoded = null;
+                if (window.location.hash && window.location.hash.includes('wishes=')) {
+                    const hashStr = window.location.hash.slice(1);
+                    const match = hashStr.match(/wishes=([^&]+)/);
+                    if (match) encoded = decodeURIComponent(match[1]);
+                }
+                if (!encoded) {
+                    const params = new URLSearchParams(window.location.search);
+                    encoded = params.get('wishes');
                 }
                 if (encoded) {
                     const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
@@ -2217,18 +2272,20 @@
 
             wishesData = loaded.filter(item => !deletedWishIds.has(String(item.id)));
             persistWishesLocally();
+            renderFloatingWishes();
         }
 
         function persistWishesLocally() {
             const serialized = JSON.stringify(wishesData);
             try { window.localStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
             try { window.sessionStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
+            saveToIndexedDB(WISHES_STORAGE_KEY, wishesData);
             writeWindowNameStore();
 
+            // Store compact wishes in URL hash (#wishes=...) which works across refreshes without SecurityError
             try {
-                const url = new URL(window.location.href);
                 if (wishesData.length > 0) {
-                    const compact = wishesData.slice(0, 12).map(w => ({
+                    const compact = wishesData.slice(0, 15).map(w => ({
                         id: w.id,
                         author: w.author,
                         text: w.text,
@@ -2236,11 +2293,10 @@
                         createdAt: w.createdAt || Date.now()
                     }));
                     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
-                    url.searchParams.set('wishes', encoded);
-                } else {
-                    url.searchParams.delete('wishes');
+                    window.location.hash = `wishes=${encodeURIComponent(encoded)}`;
+                } else if (window.location.hash && window.location.hash.includes('wishes=')) {
+                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
                 }
-                window.history.replaceState({}, '', url.toString());
             } catch (e) {}
         }
 
@@ -2384,6 +2440,24 @@
         async function fetchSharedCloudWishes(manualTrigger = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
+                // 1. Pull full persistent state snapshot from KVdb
+                try {
+                    const kvRes = await fetch(`${KV_STATE_URL}?_t=${Date.now()}`, { cache: 'no-store' });
+                    if (kvRes.ok) {
+                        const kvData = await kvRes.json();
+                        if (kvData && Array.isArray(kvData.deletedIds)) {
+                            kvData.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                            persistDeletedIdsLocally();
+                        }
+                        if (kvData && Array.isArray(kvData.wishes)) {
+                            wishesData = mergeWishesLists(kvData.wishes, wishesData);
+                            persistWishesLocally();
+                            renderFloatingWishes();
+                        }
+                    }
+                } catch (kvErr) {}
+
+                // 2. Also pull live ntfy.sh stream events
                 let ok = await pullFromNtfyEndpoint(NTFY_TOPIC_URL);
                 if (!ok) {
                     ok = await pullFromNtfyEndpoint(NTFY_BACKUP_URL);
@@ -2395,6 +2469,21 @@
             } catch (e) {
                 if (manualTrigger) showToast('Could not reach cloud stream — check mobile data/Wi-Fi', '⚠️');
             }
+        }
+
+        async function saveFullCloudStateSnapshot() {
+            try {
+                await fetch(KV_STATE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+                    body: JSON.stringify({
+                        wishes: wishesData.slice(0, 30),
+                        deletedIds: Array.from(deletedWishIds).slice(-120),
+                        updatedAt: Date.now()
+                    }),
+                    keepalive: true
+                });
+            } catch (err) {}
         }
 
         async function pushWithRetry(url, bodyStr, retries = 2) {
@@ -2417,6 +2506,7 @@
 
         async function pushSharedCloudWishes(latestWish) {
             persistWishesLocally();
+            saveFullCloudStateSnapshot();
             if (latestWish && typeof window.saveWishToLiveCloud === 'function') {
                 await window.saveWishToLiveCloud(latestWish);
             }
@@ -2527,6 +2617,7 @@
             if (wishId) deletedWishIds.add(wishId);
             persistDeletedIdsLocally();
             persistWishesLocally();
+            saveFullCloudStateSnapshot();
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
             if (typeof window.deleteWishFromLiveCloud === 'function') {
@@ -3288,9 +3379,10 @@
         }
 
         // Initialize all sections immediately on page load
-        loadSavedWishesOnBoot();
-        renderFloatingWishes();
-        fetchSharedCloudWishes();
+        loadSavedWishesOnBoot().then(() => {
+            renderFloatingWishes();
+            fetchSharedCloudWishes();
+        });
         renderHotPotatoRing(-1, false);
         initMemoryGame();
     </script>
