@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="en" class="scroll-smooth dark">
 <head>
     <meta charset="UTF-8">
@@ -451,6 +451,7 @@
                 <span class="text-2xl">🥳</span>
             </a>
             <div class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-300">
+                <a href="#gopi-birthday" class="text-amber-300 hover:text-amber-200 transition font-bold">🎂 Gopi's B'day</a>
                 <a href="#squad" class="hover:text-pink-400 transition">The Fab 8</a>
                 <a href="#timeline" class="hover:text-cyan-300 transition">4-Year Journey</a>
                 <a href="#wall-of-favourates" class="hover:text-amber-300 transition">Wall of Favourates</a>
@@ -464,6 +465,15 @@
             </div>
         </div>
     </nav>
+
+    <!-- GOPI BIRTHDAY CELEBRATION RIBBON -->
+    <div class="bg-gradient-to-r from-amber-500/20 via-pink-500/25 to-cyan-500/20 border-b border-amber-400/40 py-2.5 px-4 text-center backdrop-blur-md">
+        <a href="#gopi-birthday" class="inline-flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-extrabold text-amber-200 hover:text-white transition">
+            <span>🎂🥳</span>
+            <span>NOVEMBER BIRTHDAY SPECIAL: Happy Birthday to our Meme Dealer, <span class="text-cyan-300 underline decoration-amber-400">GOPI 😂</span>!</span>
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">Send B'day Wish →</span>
+        </a>
+    </div>
 
     <!-- HERO SECTION -->
     <header id="top" class="hero-gradient relative pt-12 pb-20 sm:pt-20 sm:pb-28 px-4 overflow-hidden border-b border-pink-500/25">
@@ -518,6 +528,9 @@
 
             <!-- Primary CTA Buttons -->
             <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+                <a href="#gopi-birthday" class="px-6 py-3.5 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-pink-500 text-slate-950 font-extrabold text-sm sm:text-base shadow-lg shadow-amber-500/40 hover:scale-105 transition">
+                    🎂 Wish Gopi Happy Birthday!
+                </a>
                 <a href="#squad" class="px-6 py-3.5 rounded-full neon-animated-bg text-white font-bold text-sm sm:text-base shadow-lg shadow-pink-500/40 hover:scale-105 transition">
                     Meet The Fab 8 👇
                 </a>
@@ -527,6 +540,46 @@
             </div>
         </div>
     </header>
+
+    <!-- SPECIAL BIRTHDAY SPOTLIGHT: HAPPY BIRTHDAY GOPI -->
+    <section id="gopi-birthday" class="pt-14 pb-6 px-4 max-w-5xl mx-auto">
+        <div class="relative rounded-3xl p-6 sm:p-10 bg-gradient-to-br from-[#1d1447] via-[#2a1354] to-[#0f294a] border-2 border-amber-400/60 shadow-[0_0_45px_rgba(251,191,36,0.3)] overflow-hidden">
+            <div class="flex flex-col md:flex-row items-center gap-7">
+                <!-- Gopi Birthday Avatar -->
+                <div class="relative shrink-0 text-center">
+                    <div class="absolute -top-5 left-1/2 -translate-x-1/2 text-3xl animate-bounce">👑</div>
+                    <div class="w-32 h-32 sm:w-36 sm:h-36 rounded-full p-1.5 bg-gradient-to-tr from-amber-400 via-pink-500 to-cyan-400 shadow-2xl mx-auto">
+                        <img src="./fab8/gopi.jpeg" alt="Birthday Boy Gopi" onerror="window.handleProfileImgFallback(this, 'Gopi', '😂')" class="w-full h-full object-cover rounded-full bg-[#120f2d]">
+                        <div class="hidden w-full h-full rounded-full bg-[#120f2d] items-center justify-center text-5xl">😂</div>
+                    </div>
+                    <span class="inline-block mt-3 px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-display font-extrabold text-xs uppercase tracking-wider shadow">
+                        🎂 November Birthday King
+                    </span>
+                </div>
+
+                <!-- Birthday Message & Instant Wish Launcher -->
+                <div class="flex-1 text-center md:text-left">
+                    <span class="inline-block px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs font-bold uppercase tracking-wider mb-2">
+                        🥳 Special Squad Celebration
+                    </span>
+                    <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mb-2">
+                        Happy Birthday, <span class="text-amber-300">Gopi 😂🎂</span>!
+                    </h2>
+                    <p class="text-sm sm:text-base text-slate-200 leading-relaxed mb-5">
+                        To our legendary <strong>Meme Dealer</strong> who always has the fastest sticker and best laughs in <strong>😍Best buddies forever🥳</strong> — wishing you a blockbuster year ahead filled with happiness, success, and unlimited treats for the Fab 8! 🎉
+                    </p>
+
+                    <div class="flex flex-col sm:flex-row gap-2.5">
+                        <input type="text" id="gopi-bday-sender" placeholder="Your Name (e.g. Gowri / Sai / Mohan)" class="px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <input type="text" id="gopi-bday-msg" value="Happy Birthday Gopi bhai! 😂🎂 Keep the memes & good vibes rolling forever! 🥳" class="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        <button type="button" onclick="sendGopiBirthdayWish()" class="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-pink-500 hover:opacity-95 text-slate-950 font-extrabold text-xs sm:text-sm shadow-lg whitespace-nowrap cursor-pointer">
+                            🎂 Blast B'day Wish!
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- SECTION 1: THE FAB 8 (WITH AVATAR HUG & HANDSHAKE INTERACTION) -->
     <section id="squad" class="py-16 sm:py-24 px-4 max-w-6xl mx-auto">
@@ -670,30 +723,30 @@
             <!-- 4. Gopi (Boy) -->
             <div class="flip-card cursor-pointer" data-gender="boy" onclick="this.classList.toggle('flipped')">
                 <div class="flip-card-inner">
-                    <div class="flip-card-front glass-dark border-sky-500/35 p-5 flex flex-col justify-between shadow-xl">
+                    <div class="flip-card-front glass-dark border-amber-400/70 p-5 flex flex-col justify-between shadow-xl ring-2 ring-amber-400/40">
                         <div class="flex items-center justify-between">
-                            <span class="px-2.5 py-1 rounded-full border text-[11px] font-bold bg-sky-500/20 text-sky-300 border-sky-400/30">👦 Boy</span>
+                            <span class="px-2.5 py-1 rounded-full border text-[11px] font-bold bg-amber-400 text-slate-950 border-amber-300">🎂 B'day Boy</span>
                             <button type="button" onclick="event.stopPropagation(); selectBuddyForAction('Gopi')" class="px-2.5 py-1 rounded-full bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/40 text-[11px] font-bold text-cyan-200 transition cursor-pointer">🤝 Connect</button>
                         </div>
                         <div class="my-auto text-center">
-                            <div id="avatar-ring-Gopi" onclick="event.stopPropagation(); selectBuddyForAction('Gopi')" title="Tap Gopi's avatar for Hug or Handshake!" class="w-24 h-24 mx-auto rounded-full p-1 bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-lg mb-3 relative cursor-pointer hover:scale-105 transition">
+                            <div id="avatar-ring-Gopi" onclick="event.stopPropagation(); selectBuddyForAction('Gopi')" title="Tap Gopi's avatar for Hug or Handshake!" class="w-24 h-24 mx-auto rounded-full p-1 bg-gradient-to-tr from-amber-400 via-pink-500 to-cyan-500 shadow-lg mb-3 relative cursor-pointer hover:scale-105 transition">
                                 <img src="./fab8/gopi.jpeg" alt="Gopi" onerror="window.handleProfileImgFallback(this, 'Gopi', '😂')" class="w-full h-full object-cover rounded-full bg-[#120f2d]">
                                 <div class="hidden w-full h-full rounded-full bg-[#120f2d] items-center justify-center text-4xl">😂</div>
-                                <span class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-[#0d0b24] border border-white/20 flex items-center justify-center text-base shadow">😂</span>
+                                <span class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-[#0d0b24] border border-white/20 flex items-center justify-center text-base shadow">🎂</span>
                             </div>
-                            <h3 class="font-display text-2xl font-bold text-white">Gopi</h3>
-                            <p class="text-xs font-extrabold uppercase tracking-wider text-amber-300 mt-1">Meme dealer</p>
+                            <h3 class="font-display text-2xl font-bold text-white">Gopi 🥳</h3>
+                            <p class="text-xs font-extrabold uppercase tracking-wider text-amber-300 mt-1">Meme dealer • B'day King</p>
                         </div>
-                        <div class="text-center text-[11px] text-slate-400">Tap photo to Hug/Handshake • Card to flip ↻</div>
+                        <div class="text-center text-[11px] text-amber-200">Tap photo to Hug/Handshake • Card to flip ↻</div>
                     </div>
-                    <div class="flip-card-back bg-gradient-to-br from-cyan-500 to-blue-600 p-6 flex flex-col justify-between text-white shadow-2xl">
+                    <div class="flip-card-back bg-gradient-to-br from-amber-500 via-pink-600 to-blue-600 p-6 flex flex-col justify-between text-white shadow-2xl">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-extrabold uppercase tracking-wider bg-black/25 px-3 py-1 rounded-full">Meme dealer</span>
+                            <span class="text-xs font-extrabold uppercase tracking-wider bg-black/25 px-3 py-1 rounded-full">🎂 Happy B'day Gopi!</span>
                             <span class="text-2xl">😂</span>
                         </div>
                         <div class="my-auto">
                             <h4 class="font-display text-2xl font-bold mb-2">Gopi</h4>
-                            <p class="text-sm leading-relaxed text-white/95 font-medium">"Has a reaction sticker and meme ready for every situation in milliseconds."</p>
+                            <p class="text-sm leading-relaxed text-white/95 font-medium">"Our November Birthday Legend & Meme Dealer — has a reaction sticker ready in milliseconds!"</p>
                         </div>
                         <p class="text-[11px] font-bold text-white/80 text-right">Tap again to flip back ↺</p>
                     </div>
@@ -983,7 +1036,7 @@
                         <div class="paper-pin-top"></div><div class="paper-pin-neck"></div><div class="paper-pin-base"></div><div class="paper-pin-needle"></div><div class="paper-pin-hole"></div>
                     </div>
                     <div class="photo-gloss-wrap aspect-video w-full bg-slate-900">
-                        <img src="./walloffev/alisha.sfev.jpeg" alt="Fav of Alisha" onerror="window.handleFavWallImgFallback(this, 'alisha', 'Alisha')" class="w-full h-full object-cover">
+                        <img src="walloffev/alisha,sfav.jpeg" alt="Fav of Alisha" onerror="window.handleFavWallImgFallback(this, 'alisha', 'Alisha')" class="w-full h-full object-cover">
                     </div>
                     <div class="mt-3 text-center">
                         <p class="font-display text-sm sm:text-base font-bold text-slate-800 tracking-wide">❤️ Fav of Alisha 🔥</p>
@@ -1538,6 +1591,91 @@
         <span id="toast-msg">Notification</span>
     </div>
 
+    <!-- Real-Time Cross-Device Sync Bridge for Floating Wishes -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        async function initLiveSquadCloudSync() {
+            const syncPill = document.getElementById('cloud-sync-pill');
+            if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                return;
+            }
+            try {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'best-buddies-forever-4th';
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                const user = auth.currentUser;
+                if (!user) return;
+
+                const wishesCol = collection(db, 'artifacts', appId, 'public', 'data', 'floating_wishes');
+
+                // Real-time listener: updates floating wishes across ALL devices automatically
+                onSnapshot(wishesCol, (snapshot) => {
+                    const cloudItems = [];
+                    snapshot.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        if (data && data.author && data.text) {
+                            cloudItems.push({
+                                cloudDocId: docSnap.id,
+                                id: data.id || docSnap.id,
+                                author: data.author,
+                                text: data.text,
+                                date: data.date || '13/11/2026',
+                                createdAt: data.createdAt || 0
+                            });
+                        }
+                    });
+                    cloudItems.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+                    if (typeof window.syncCloudWishesFromRealtime === 'function') {
+                        window.syncCloudWishesFromRealtime(cloudItems);
+                    }
+                    if (syncPill) {
+                        syncPill.textContent = '🟢 Live Multi-Device Sync Active';
+                    }
+                }, (err) => {
+                    if (syncPill) syncPill.textContent = '🟡 Saved on Device';
+                });
+
+                // Expose add/delete handlers to main script
+                window.saveWishToLiveCloud = async function(wishObj) {
+                    if (!auth.currentUser) return;
+                    try {
+                        await addDoc(wishesCol, {
+                            id: wishObj.id,
+                            author: wishObj.author,
+                            text: wishObj.text,
+                            date: wishObj.date || '13/11/2026',
+                            createdAt: Date.now()
+                        });
+                    } catch (e) {}
+                };
+
+                window.deleteWishFromLiveCloud = async function(cloudDocId) {
+                    if (!auth.currentUser || !cloudDocId) return;
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'floating_wishes', cloudDocId));
+                    } catch (e) {}
+                };
+            } catch (err) {
+                if (syncPill) syncPill.textContent = '🟡 Saved on Device';
+            }
+        }
+
+        initLiveSquadCloudSync();
+    </script>
+
     <script>
         // ==========================================
         // 1. CONFETTI OVERLAY & TOAST NOTIFICATIONS
@@ -1916,23 +2054,8 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_LOCAL_KEY = 'bbf_floating_wishes_v4';
-        const WISHES_VISIBILITY_KEY = 'bbf_floating_visible_v4';
-        const SHARED_CLOUD_ENDPOINT = 'https://kvdb.io/A9xK7mP2qR8vL4nW6tY1zB/bbf_anniversary_wishes_2026';
-
         let wishesData = [];
-        try {
-            const saved = JSON.parse(localStorage.getItem(WISHES_LOCAL_KEY));
-            if (Array.isArray(saved)) wishesData = saved;
-        } catch (e) {
-            wishesData = [];
-        }
-
         let floatingVisible = true;
-        try {
-            const savedVis = localStorage.getItem(WISHES_VISIBILITY_KEY);
-            if (savedVis === 'false') floatingVisible = false;
-        } catch (e) {}
 
         const floatingColors = [
             'from-pink-600/90 to-rose-700/90 border-pink-300/40',
@@ -1959,12 +2082,6 @@
             }[m]));
         }
 
-        function saveLocalWishes() {
-            try {
-                localStorage.setItem(WISHES_LOCAL_KEY, JSON.stringify(wishesData));
-            } catch (err) {}
-        }
-
         function mergeWishesLists(listA, listB) {
             const merged = [];
             const seen = new Set();
@@ -1974,54 +2091,35 @@
                 if (!seen.has(key)) {
                     seen.add(key);
                     merged.push({
+                        cloudDocId: item.cloudDocId || null,
                         id: item.id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                         author: item.author.trim(),
                         text: item.text.trim(),
-                        date: item.date || '13/11/2026'
+                        date: item.date || '13/11/2026',
+                        createdAt: item.createdAt || 0
                     });
+                } else if (item.cloudDocId) {
+                    const existing = merged.find(m => `${m.author.toLowerCase()}::${m.text.toLowerCase()}` === key);
+                    if (existing && !existing.cloudDocId) existing.cloudDocId = item.cloudDocId;
                 }
             });
             return merged;
         }
 
+        window.syncCloudWishesFromRealtime = function(cloudItems) {
+            wishesData = mergeWishesLists(cloudItems, wishesData);
+            renderFloatingWishes();
+        };
+
         async function fetchSharedCloudWishes() {
-            const syncPill = document.getElementById('cloud-sync-pill');
-            try {
-                const res = await fetch(SHARED_CLOUD_ENDPOINT, { cache: 'no-store' });
-                if (res.ok) {
-                    const remoteData = await res.json();
-                    if (Array.isArray(remoteData)) {
-                        wishesData = mergeWishesLists(wishesData, remoteData);
-                        saveLocalWishes();
-                        renderFloatingWishes();
-                    }
-                }
-                if (syncPill) syncPill.textContent = '🟢 Live Squad Sync';
-            } catch (err) {
-                if (syncPill) syncPill.textContent = '🟡 Saved on Device';
-            }
+            // Handled live by onSnapshot in initLiveSquadCloudSync
+            renderFloatingWishes();
         }
 
-        async function pushSharedCloudWishes() {
-            try {
-                const res = await fetch(SHARED_CLOUD_ENDPOINT, { cache: 'no-store' });
-                if (res.ok) {
-                    const remoteData = await res.json();
-                    if (Array.isArray(remoteData)) {
-                        wishesData = mergeWishesLists(wishesData, remoteData);
-                        saveLocalWishes();
-                        renderFloatingWishes();
-                    }
-                }
-            } catch (e) {}
-
-            try {
-                await fetch(SHARED_CLOUD_ENDPOINT, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(wishesData.slice(0, 40))
-                });
-            } catch (err) {}
+        async function pushSharedCloudWishes(latestWish) {
+            if (latestWish && typeof window.saveWishToLiveCloud === 'function') {
+                await window.saveWishToLiveCloud(latestWish);
+            }
         }
 
         function renderFloatingWishes() {
@@ -2099,23 +2197,15 @@
         async function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
-            saveLocalWishes();
             renderFloatingWishes();
             showToast(`Deleted ${removed.author}'s wish 🗑️`, '🗑️');
-            try {
-                await fetch(SHARED_CLOUD_ENDPOINT, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(wishesData.slice(0, 40))
-                });
-            } catch (err) {}
+            if (removed.cloudDocId && typeof window.deleteWishFromLiveCloud === 'function') {
+                await window.deleteWishFromLiveCloud(removed.cloudDocId);
+            }
         }
 
         function toggleFloatingWishes() {
             floatingVisible = !floatingVisible;
-            try {
-                localStorage.setItem(WISHES_VISIBILITY_KEY, String(floatingVisible));
-            } catch (e) {}
             renderFloatingWishes();
             showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '✨');
         }
@@ -2134,22 +2224,19 @@
                     id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                     author,
                     text,
-                    date: '13/11/2026'
+                    date: '13/11/2026',
+                    createdAt: Date.now()
                 };
                 wishesData.unshift(newWish);
-                saveLocalWishes();
 
                 floatingVisible = true;
-                try {
-                    localStorage.setItem(WISHES_VISIBILITY_KEY, 'true');
-                } catch (err) {}
 
                 renderFloatingWishes();
                 triggerConfettiBurst(0.5, 0.45);
                 nameInput.value = '';
                 textInput.value = '';
 
-                pushSharedCloudWishes();
+                pushSharedCloudWishes(newWish);
 
                 sendCardAndOpenShareModal({
                     type: '🎈 Floating Anniversary Wish',
@@ -2631,6 +2718,38 @@
                 headline: `${playerName} Scored ${arcadeScore} Points!`,
                 body: `Caught Bread Omelets, Anniversary Cakes & Gopi's Memes in 25 seconds! Beat ${arcadeScore} pts if you can!`,
                 author: playerName
+            });
+        }
+
+        // ==========================================
+        // 9B. GOPI BIRTHDAY WISH LAUNCHER
+        // ==========================================
+        function sendGopiBirthdayWish() {
+            const senderInput = document.getElementById('gopi-bday-sender');
+            const msgInput = document.getElementById('gopi-bday-msg');
+            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
+            const msg = (msgInput && msgInput.value.trim()) || 'Happy Birthday Gopi! 😂🎂🥳';
+
+            const newWish = {
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                author: `${sender} → Gopi 🎂`,
+                text: msg,
+                date: 'Nov B’day',
+                createdAt: Date.now()
+            };
+            wishesData.unshift(newWish);
+            floatingVisible = true;
+            renderFloatingWishes();
+            pushSharedCloudWishes(newWish);
+
+            triggerConfettiBurst(0.3, 0.4);
+            setTimeout(() => triggerConfettiBurst(0.7, 0.4), 220);
+
+            sendCardAndOpenShareModal({
+                type: '🎂 Happy Birthday Gopi 😂🥳',
+                headline: `Happy Birthday Gopi!`,
+                body: msg,
+                author: sender
             });
         }
 
