@@ -2062,13 +2062,38 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v7';
-        // Simple CORS-preflight-free public pub/sub stream + SSE real-time listener (works across all Chrome profiles & devices!)
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v8';
+        // Multi-mirror CORS-free cloud sync (primary ntfy.sh stream + secondary mirror + BroadcastChannel)
         const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026';
         const NTFY_TOPIC_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}`;
+        const NTFY_BACKUP_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}_mirror`;
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
+        let lastEventTimestamp = 0;
+
+        // Instant same-browser / multi-tab channel
+        let squadBroadcast = null;
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel');
+                squadBroadcast.onmessage = function(ev) {
+                    if (ev && ev.data) applyIncomingCloudEvent(ev.data);
+                };
+            }
+        } catch (e) {}
+
+        window.addEventListener('storage', function(e) {
+            if (e.key === WISHES_STORAGE_KEY && e.newValue) {
+                try {
+                    const parsed = JSON.parse(e.newValue);
+                    if (Array.isArray(parsed)) {
+                        wishesData = mergeWishesLists(wishesData, parsed);
+                        renderFloatingWishes();
+                    }
+                } catch (err) {}
+            }
+        });
 
         function loadSavedWishesOnBoot() {
             let loaded = [];
@@ -2216,7 +2241,7 @@
                 if (sseConnection) sseConnection.close();
                 sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
                 sseConnection.onopen = function() {
-                    if (syncPill) syncPill.textContent = '🟢 Live Stream Active (All Profiles & Devices)';
+                    if (syncPill) syncPill.textContent = '🟢 Live Stream Active (All Devices)';
                 };
                 sseConnection.onmessage = function(event) {
                     try {
@@ -2228,36 +2253,70 @@
                     } catch (err) {}
                 };
                 sseConnection.onerror = function() {
-                    if (syncPill) syncPill.textContent = '🟡 Reconnecting Stream...';
+                    if (syncPill) syncPill.textContent = '🟡 Syncing via Auto-Poll...';
+                    // Auto-reconnect SSE after 4 seconds on mobile networks
+                    setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            startLiveSquadEventStream();
+                        }
+                    }, 4000);
                 };
             } catch (e) {}
+        }
+
+        async function pullFromNtfyEndpoint(baseUrl) {
+            const cacheBuster = Date.now();
+            const res = await fetch(`${baseUrl}/json?poll=1&since=all&_t=${cacheBuster}`, {
+                method: 'GET',
+                cache: 'no-store'
+            });
+            if (!res.ok) return false;
+            const rawLines = await res.text();
+            const lines = rawLines.split('\n').filter(Boolean);
+            lines.forEach(line => {
+                try {
+                    const evt = JSON.parse(line);
+                    if (evt && evt.event === 'message' && evt.message) {
+                        const payload = JSON.parse(evt.message);
+                        applyIncomingCloudEvent(payload);
+                    }
+                } catch (err) {}
+            });
+            return true;
         }
 
         async function fetchSharedCloudWishes(manualTrigger = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
-                const res = await fetch(`${NTFY_TOPIC_URL}/json?poll=1&since=all`, {
-                    method: 'GET',
-                    cache: 'no-store'
-                });
-                if (res.ok) {
-                    const rawLines = await res.text();
-                    const lines = rawLines.split('\n').filter(Boolean);
-                    lines.forEach(line => {
-                        try {
-                            const evt = JSON.parse(line);
-                            if (evt && evt.event === 'message' && evt.message) {
-                                const payload = JSON.parse(evt.message);
-                                applyIncomingCloudEvent(payload);
-                            }
-                        } catch (err) {}
-                    });
-                    if (syncPill) syncPill.textContent = '🟢 Live Stream Active (All Profiles & Devices)';
-                    if (manualTrigger) showToast(`Synced! ${wishesData.length} floating wish(es) loaded 🎈`, '✅');
+                let ok = await pullFromNtfyEndpoint(NTFY_TOPIC_URL);
+                if (!ok) {
+                    ok = await pullFromNtfyEndpoint(NTFY_BACKUP_URL);
+                }
+                if (ok) {
+                    if (syncPill) syncPill.textContent = '🟢 Live Sync Active (All Devices)';
+                    if (manualTrigger) showToast(`Synced! ${wishesData.length} floating wish(es) active 🎈`, '✅');
                 }
             } catch (e) {
-                if (manualTrigger) showToast('Could not reach cloud stream — check internet connection', '⚠️');
+                if (manualTrigger) showToast('Could not reach cloud stream — check mobile data/Wi-Fi', '⚠️');
             }
+        }
+
+        async function pushWithRetry(url, bodyStr, retries = 2) {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain;charset=UTF-8'
+                        },
+                        body: bodyStr,
+                        keepalive: true
+                    });
+                    if (res.ok) return true;
+                } catch (err) {}
+                await new Promise(r => setTimeout(r, 700 * (attempt + 1)));
+            }
+            return false;
         }
 
         async function pushSharedCloudWishes(latestWish) {
@@ -2267,26 +2326,29 @@
             }
             const syncPill = document.getElementById('cloud-sync-pill');
             if (!latestWish) return;
-            try {
-                // Simple text/plain POST with ZERO custom headers avoids Chrome CORS preflight blocks
-                const res = await fetch(NTFY_TOPIC_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain;charset=UTF-8'
-                    },
-                    body: JSON.stringify({
-                        action: 'add',
-                        id: latestWish.id,
-                        author: latestWish.author,
-                        text: latestWish.text,
-                        date: latestWish.date || '13/11/2026',
-                        createdAt: latestWish.createdAt || Date.now()
-                    })
-                });
-                if (res.ok && syncPill) {
-                    syncPill.textContent = '🟢 Synced to All Chrome Profiles & Devices!';
-                }
-            } catch (e) {}
+
+            const payload = {
+                action: 'add',
+                id: latestWish.id,
+                author: latestWish.author,
+                text: latestWish.text,
+                date: latestWish.date || '13/11/2026',
+                createdAt: latestWish.createdAt || Date.now()
+            };
+
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage(payload); } catch (e) {}
+            }
+
+            const bodyStr = JSON.stringify(payload);
+            const [primaryOk, backupOk] = await Promise.all([
+                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 2),
+                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 1)
+            ]);
+
+            if ((primaryOk || backupOk) && syncPill) {
+                syncPill.textContent = '🟢 Synced to All Devices!';
+            }
         }
 
         function renderFloatingWishes() {
@@ -2372,18 +2434,15 @@
             if (removed.cloudDocId && typeof window.deleteWishFromLiveCloud === 'function') {
                 await window.deleteWishFromLiveCloud(removed.cloudDocId);
             }
-            try {
-                await fetch(NTFY_TOPIC_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain;charset=UTF-8'
-                    },
-                    body: JSON.stringify({
-                        action: 'delete',
-                        key: delKey
-                    })
-                });
-            } catch (e) {}
+            const delPayload = { action: 'delete', key: delKey };
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage(delPayload); } catch (e) {}
+            }
+            const delBody = JSON.stringify(delPayload);
+            await Promise.all([
+                pushWithRetry(NTFY_TOPIC_URL, delBody, 2),
+                pushWithRetry(NTFY_BACKUP_URL, delBody, 1)
+            ]);
         }
 
         function toggleFloatingWishes() {
@@ -2392,9 +2451,23 @@
             showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '✨');
         }
 
-        // Start real-time SSE stream + fallback polling every 8 seconds
+        // Re-sync immediately whenever a phone screen wakes up or switches back to the browser tab
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                fetchSharedCloudWishes(false);
+                if (!sseConnection || sseConnection.readyState === 2) {
+                    startLiveSquadEventStream();
+                }
+            }
+        });
+        window.addEventListener('online', function() {
+            fetchSharedCloudWishes(false);
+            startLiveSquadEventStream();
+        });
+
+        // Start real-time SSE stream + cache-busted polling every 4 seconds
         startLiveSquadEventStream();
-        setInterval(() => fetchSharedCloudWishes(false), 8000);
+        setInterval(() => fetchSharedCloudWishes(false), 4000);
 
         const wishFormEl = document.getElementById('wish-form');
         if (wishFormEl) {
@@ -2402,8 +2475,8 @@
                 e.preventDefault();
                 const nameInput = document.getElementById('wish-name');
                 const textInput = document.getElementById('wish-text');
-                const author = nameInput.value.trim();
-                const text = textInput.value.trim();
+                const author = nameInput ? nameInput.value.trim() : '';
+                const text = textInput ? textInput.value.trim() : '';
                 if (!author || !text) return;
 
                 const newWish = {
