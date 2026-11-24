@@ -2079,375 +2079,179 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v12';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v12';
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/fab8wishes2026';
-        const NTFY_BACKUP_URL = 'https://ntfy.sh/fab8wishes2026b';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v14';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v14';
+        const GLOBAL_KV_URL = 'https://kvdb.io/N5v8P2mQ9xR4tL7wK3zY6j/fab8_wishes_live_2026';
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_sync_9860490';
+        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_backup_9860490';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
 
         const deletedWishIds = new Set();
-
-        // IndexedDB Helper (survives refreshes even in strict browser modes)
-        function saveToIndexedDB(key, val) {
-            try {
-                const req = indexedDB.open('BBF_Fab8_DB', 1);
-                req.onupgradeneeded = function(e) {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
-                };
-                req.onsuccess = function(e) {
-                    const db = e.target.result;
-                    const tx = db.transaction('kv', 'readwrite');
-                    tx.objectStore('kv').put(val, key);
-                };
-            } catch (err) {}
-        }
-
-        function loadFromIndexedDB(key) {
-            return new Promise((resolve) => {
-                try {
-                    const req = indexedDB.open('BBF_Fab8_DB', 1);
-                    req.onupgradeneeded = function(e) {
-                        const db = e.target.result;
-                        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
-                    };
-                    req.onsuccess = function(e) {
-                        const db = e.target.result;
-                        const tx = db.transaction('kv', 'readonly');
-                        const getReq = tx.objectStore('kv').get(key);
-                        getReq.onsuccess = () => resolve(getReq.result || null);
-                        getReq.onerror = () => resolve(null);
-                    };
-                    req.onerror = () => resolve(null);
-                } catch (err) {
-                    resolve(null);
-                }
-            });
-        }
+        const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
+            ? new BroadcastChannel('bbf_fab8_squad_channel_v14')
+            : null;
 
         function makeWishKey(author, text) {
             return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
         }
 
-        function readWindowNameStore() {
-            try {
-                if (window.name && window.name.startsWith('BBF_STATE:')) {
-                    return JSON.parse(window.name.slice('BBF_STATE:'.length));
-                }
-            } catch (e) {}
-            return { wishes: [], deletedIds: [] };
-        }
-
-        function writeWindowNameStore() {
-            try {
-                window.name = 'BBF_STATE:' + JSON.stringify({
-                    wishes: wishesData.slice(0, 25),
-                    deletedIds: Array.from(deletedWishIds).slice(-100)
-                });
-            } catch (e) {}
-        }
-
         function persistDeletedIdsLocally() {
-            const arr = Array.from(deletedWishIds);
-            try { window.localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
-            try { window.sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
-            saveToIndexedDB(DELETED_IDS_STORAGE_KEY, arr);
-            writeWindowNameStore();
-        }
-
-        window.registerRemoteDeletedWish = function(wishId, delKey, deletedAt = 0) {
-            if (wishId) deletedWishIds.add(String(wishId));
-            persistDeletedIdsLocally();
-            const beforeCount = wishesData.length;
-            wishesData = wishesData.filter(item => {
-                if (wishId && String(item.id) === String(wishId)) return false;
-                if (!wishId && delKey && makeWishKey(item.author, item.text) === delKey && (item.createdAt || 0) <= deletedAt) {
-                    return false;
-                }
-                return true;
-            });
-            if (wishesData.length !== beforeCount) {
-                persistWishesLocally();
-                renderFloatingWishes();
-            }
-        };
-
-        // Instant same-browser / multi-tab channel
-        let squadBroadcast = null;
-        try {
-            if (typeof BroadcastChannel !== 'undefined') {
-                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel_v10');
-                squadBroadcast.onmessage = function(ev) {
-                    if (ev && ev.data) applyIncomingCloudEvent(ev.data);
-                };
-            }
-        } catch (e) {}
-
-        window.addEventListener('storage', function(e) {
-            if (e.key === DELETED_IDS_STORAGE_KEY && e.newValue) {
-                try {
-                    const ids = JSON.parse(e.newValue);
-                    if (Array.isArray(ids)) {
-                        ids.forEach(id => deletedWishIds.add(String(id)));
-                        wishesData = wishesData.filter(item => !deletedWishIds.has(String(item.id)));
-                        renderFloatingWishes();
-                    }
-                } catch (err) {}
-            }
-            if (e.key === WISHES_STORAGE_KEY && e.newValue) {
-                try {
-                    const parsed = JSON.parse(e.newValue);
-                    if (Array.isArray(parsed)) {
-                        wishesData = mergeWishesLists(wishesData, parsed);
-                        renderFloatingWishes();
-                    }
-                } catch (err) {}
-            }
-        });
-
-        async function loadSavedWishesOnBoot() {
-            const winStore = readWindowNameStore();
-            if (Array.isArray(winStore.deletedIds)) {
-                winStore.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-            }
-            [window.localStorage, window.sessionStorage].forEach(store => {
-                try {
-                    const rawDeleted = store.getItem(DELETED_IDS_STORAGE_KEY);
-                    if (rawDeleted) {
-                        const parsedDel = JSON.parse(rawDeleted);
-                        if (Array.isArray(parsedDel)) {
-                            parsedDel.forEach(id => deletedWishIds.add(String(id)));
-                        }
-                    }
-                } catch (e) {}
-            });
-
-            const idbDeleted = await loadFromIndexedDB(DELETED_IDS_STORAGE_KEY);
-            if (Array.isArray(idbDeleted)) {
-                idbDeleted.forEach(id => deletedWishIds.add(String(id)));
-            }
-
-            let loaded = Array.isArray(winStore.wishes) ? [...winStore.wishes] : [];
-            [window.localStorage, window.sessionStorage].forEach(store => {
-                try {
-                    const raw = store.getItem(WISHES_STORAGE_KEY);
-                    if (raw) {
-                        const parsed = JSON.parse(raw);
-                        if (Array.isArray(parsed)) {
-                            loaded = mergeWishesLists(loaded, parsed);
-                        }
-                    }
-                } catch (e) {}
-            });
-
-            const idbWishes = await loadFromIndexedDB(WISHES_STORAGE_KEY);
-            if (Array.isArray(idbWishes)) {
-                loaded = mergeWishesLists(loaded, idbWishes);
-            }
-
-            // Also merge any wishes passed via URL hash (#wishes=...) or query (?wishes=...)
-            try {
-                let encoded = null;
-                if (window.location.hash && window.location.hash.includes('wishes=')) {
-                    const hashStr = window.location.hash.slice(1);
-                    const match = hashStr.match(/wishes=([^&]+)/);
-                    if (match) encoded = decodeURIComponent(match[1]);
-                }
-                if (!encoded) {
-                    const params = new URLSearchParams(window.location.search);
-                    encoded = params.get('wishes');
-                }
-                if (encoded) {
-                    const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-                    if (Array.isArray(decoded)) {
-                        loaded = mergeWishesLists(loaded, decoded);
-                    }
-                }
-            } catch (e) {}
-
-            wishesData = loaded.filter(item => !deletedWishIds.has(String(item.id)));
-            persistWishesLocally();
-            renderFloatingWishes();
+            const arr = Array.from(deletedWishIds).slice(-120);
+            try { localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
+            try { sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
         }
 
         function persistWishesLocally() {
-            const serialized = JSON.stringify(wishesData);
-            try { window.localStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
-            try { window.sessionStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
-            saveToIndexedDB(WISHES_STORAGE_KEY, wishesData);
-            writeWindowNameStore();
-
-            // Store compact wishes in URL hash (#wishes=...) which works across refreshes without SecurityError
+            const clean = wishesData.slice(0, 30).map(w => ({
+                id: w.id,
+                author: w.author,
+                text: w.text,
+                date: w.date || '13/11/2026',
+                createdAt: w.createdAt || Date.now()
+            }));
+            const serialized = JSON.stringify(clean);
+            try { localStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
+            try { sessionStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
             try {
-                if (wishesData.length > 0) {
-                    const compact = wishesData.slice(0, 15).map(w => ({
-                        id: w.id,
-                        author: w.author,
-                        text: w.text,
-                        date: w.date || '13/11/2026',
-                        createdAt: w.createdAt || Date.now()
-                    }));
-                    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
-                    window.location.hash = `wishes=${encodeURIComponent(encoded)}`;
-                } else if (window.location.hash && window.location.hash.includes('wishes=')) {
-                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                const encoded = btoa(unescape(encodeURIComponent(serialized)));
+                if (encoded.length < 4000) {
+                    window.location.hash = `wishes=${encoded}`;
                 }
             } catch (e) {}
         }
 
-        function copySquadSyncLink() {
-            persistWishesLocally();
-            const linkToCopy = window.location.href;
-            const tempInput = document.createElement('input');
-            tempInput.value = linkToCopy;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            showToast('Copied Live Link with all floating wishes! Open in any profile/browser 🔗', '🎈');
-        }
-
-        const floatingColors = [
-            'from-pink-600/90 to-rose-700/90 border-pink-300/40',
-            'from-purple-600/90 to-indigo-700/90 border-purple-300/40',
-            'from-sky-600/90 to-blue-700/90 border-sky-300/40',
-            'from-amber-500/90 to-orange-600/90 border-amber-200/50',
-            'from-emerald-600/90 to-teal-700/90 border-emerald-300/40'
-        ];
-
-        const floatingPositions = [
-            { top: '14%', left: '3%' },
-            { top: '20%', right: '3%' },
-            { top: '38%', left: '2%' },
-            { top: '44%', right: '2%' },
-            { top: '62%', left: '3%' },
-            { top: '68%', right: '3%' },
-            { top: '80%', left: '5%' },
-            { top: '82%', right: '5%' }
-        ];
-
-        function escapeHTML(str) {
-            return String(str || '').replace(/[&<>"']/g, m => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            }[m]));
-        }
-
         function mergeWishesLists(listA, listB) {
-            const merged = [];
-            const seenKeys = new Set();
-            const seenIds = new Set();
-            [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
+            const map = new Map();
+            [...(listA || []), ...(listB || [])].forEach(item => {
                 if (!item || !item.author || !item.text) return;
-                const itemId = String(item.id || `${item.createdAt || 0}_${makeWishKey(item.author, item.text)}`);
-                if (deletedWishIds.has(itemId)) return;
-                const key = makeWishKey(item.author, item.text);
-                if (!seenIds.has(itemId) && !seenKeys.has(key)) {
-                    seenIds.add(itemId);
-                    seenKeys.add(key);
-                    merged.push({
-                        cloudDocId: item.cloudDocId || null,
-                        id: itemId,
-                        author: item.author.trim(),
-                        text: item.text.trim(),
+                const id = String(item.id || makeWishKey(item.author, item.text));
+                if (deletedWishIds.has(id)) return;
+                if (!map.has(id)) {
+                    map.set(id, {
+                        cloudDocId: item.cloudDocId || '',
+                        id,
+                        author: String(item.author).trim(),
+                        text: String(item.text).trim(),
                         date: item.date || '13/11/2026',
                         createdAt: item.createdAt || Date.now()
                     });
-                } else if (item.cloudDocId) {
-                    const existing = merged.find(m => m.id === itemId || makeWishKey(m.author, m.text) === key);
-                    if (existing && !existing.cloudDocId) existing.cloudDocId = item.cloudDocId;
                 }
             });
-            return merged;
+            return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
         }
 
+        async function loadSavedWishesOnBoot() {
+            try {
+                const rawDel = localStorage.getItem(DELETED_IDS_STORAGE_KEY) || sessionStorage.getItem(DELETED_IDS_STORAGE_KEY);
+                if (rawDel) {
+                    const parsedDel = JSON.parse(rawDel);
+                    if (Array.isArray(parsedDel)) parsedDel.forEach(id => deletedWishIds.add(String(id)));
+                }
+            } catch (e) {}
+
+            let restored = [];
+            try {
+                const rawLocal = localStorage.getItem(WISHES_STORAGE_KEY) || sessionStorage.getItem(WISHES_STORAGE_KEY);
+                if (rawLocal) {
+                    const parsed = JSON.parse(rawLocal);
+                    if (Array.isArray(parsed)) restored = mergeWishesLists(restored, parsed);
+                }
+            } catch (e) {}
+
+            try {
+                const hash = window.location.hash || '';
+                const match = hash.match(/wishes=([A-Za-z0-9+/=]+)/);
+                if (match && match[1]) {
+                    const decoded = decodeURIComponent(escape(atob(match[1])));
+                    const parsedHash = JSON.parse(decoded);
+                    if (Array.isArray(parsedHash)) restored = mergeWishesLists(restored, parsedHash);
+                }
+            } catch (e) {}
+
+            wishesData = restored;
+            return wishesData;
+        }
+
+        window.registerRemoteDeletedWish = function(wishId, delKey, deletedAt) {
+            if (wishId) deletedWishIds.add(String(wishId));
+            persistDeletedIdsLocally();
+            const before = wishesData.length;
+            wishesData = wishesData.filter(w => {
+                if (wishId && String(w.id) === String(wishId)) return false;
+                if (delKey && makeWishKey(w.author, w.text) === delKey && (!deletedAt || (w.createdAt || 0) <= deletedAt)) return false;
+                return true;
+            });
+            if (wishesData.length !== before) {
+                persistWishesLocally();
+                renderFloatingWishes();
+            }
+        };
+
         window.syncCloudWishesFromRealtime = function(cloudItems) {
-            wishesData = mergeWishesLists(cloudItems, wishesData);
+            const filtered = (cloudItems || []).filter(w => !deletedWishIds.has(String(w.id)));
+            wishesData = mergeWishesLists(filtered, wishesData);
             persistWishesLocally();
             renderFloatingWishes();
         };
 
-        function applyIncomingCloudEvent(payload) {
-            if (!payload || typeof payload !== 'object') return;
-            if (payload.action === 'delete' && (payload.wishId || payload.key)) {
-                window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
-                return;
-            }
-            if (payload.author && payload.text) {
-                const itemId = String(payload.id || '');
-                if (itemId && deletedWishIds.has(itemId)) return;
-                wishesData = mergeWishesLists([payload], wishesData);
-                persistWishesLocally();
-                renderFloatingWishes();
-            }
-        }
-
-        function startLiveSquadEventStream() {
-            const syncPill = document.getElementById('cloud-sync-pill');
-            if (typeof EventSource === 'undefined') return;
+        async function pullFromNtfyEndpoint(topicUrl) {
             try {
-                if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
-                sseConnection.onopen = function() {
-                    if (syncPill) syncPill.textContent = '🟢 Live Stream Active (All Devices)';
-                };
-                sseConnection.onmessage = function(event) {
+                const res = await fetch(`${topicUrl}/json?poll=1&since=all&_t=${Date.now()}`, {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+                if (!res.ok) return false;
+                const text = await res.text();
+                const lines = text.split('\n').filter(Boolean);
+                const incoming = [];
+                lines.forEach(line => {
                     try {
-                        const evt = JSON.parse(event.data);
-                        if (evt && evt.event === 'message' && evt.message) {
-                            const payload = JSON.parse(evt.message);
-                            applyIncomingCloudEvent(payload);
+                        const envelope = JSON.parse(line);
+                        if (!envelope || !envelope.message) return;
+                        const payload = JSON.parse(envelope.message);
+                        if (payload.action === 'delete') {
+                            window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
+                        } else if (payload.action === 'add' && payload.author && payload.text) {
+                            incoming.push(payload);
                         }
-                    } catch (err) {}
-                };
-                sseConnection.onerror = function() {
-                    if (syncPill) syncPill.textContent = '🟡 Syncing via Auto-Poll...';
-                    // Auto-reconnect SSE after 4 seconds on mobile networks
-                    setTimeout(() => {
-                        if (document.visibilityState === 'visible') {
-                            startLiveSquadEventStream();
-                        }
-                    }, 4000);
-                };
-            } catch (e) {}
-        }
-
-        async function pullFromNtfyEndpoint(baseUrl) {
-            const cacheBuster = Date.now();
-            const res = await fetch(`${baseUrl}/json?poll=1&since=all&_t=${cacheBuster}`, {
-                method: 'GET',
-                cache: 'no-store'
-            });
-            if (!res.ok) return false;
-            const rawLines = await res.text();
-            const lines = rawLines.split('\n').filter(Boolean);
-            lines.forEach(line => {
-                try {
-                    const evt = JSON.parse(line);
-                    if (evt && evt.event === 'message' && evt.message) {
-                        const payload = JSON.parse(evt.message);
-                        applyIncomingCloudEvent(payload);
-                    }
-                } catch (err) {}
-            });
-            return true;
-        }
-
-        async function fetchSharedCloudWishes(manualTrigger = false) {
-            const syncPill = document.getElementById('cloud-sync-pill');
-            try {
-                let ok = await pullFromNtfyEndpoint(NTFY_TOPIC_URL);
-                if (!ok) {
-                    ok = await pullFromNtfyEndpoint(NTFY_BACKUP_URL);
+                    } catch (e) {}
+                });
+                if (incoming.length > 0) {
+                    wishesData = mergeWishesLists(incoming, wishesData);
+                    persistWishesLocally();
+                    renderFloatingWishes();
                 }
-                if (ok) {
-                    if (syncPill) syncPill.textContent = '🟢 Live Sync Active (All Profiles & Devices)';
-                    if (manualTrigger) showToast(`Synced! ${wishesData.length} floating wish(es) active across all buddies 🎈`, '✅');
-                }
+                return true;
             } catch (e) {
-                if (manualTrigger) showToast('Could not reach cloud stream — check mobile data/Wi-Fi', '⚠️');
+                return false;
             }
+        }
+
+        async function pullFromGlobalKVStore() {
+            try {
+                const res = await fetch(`${GLOBAL_KV_URL}?_t=${Date.now()}`, {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (data && typeof data === 'object') {
+                    if (Array.isArray(data.deletedIds)) {
+                        data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                        persistDeletedIdsLocally();
+                    }
+                    if (Array.isArray(data.wishes)) {
+                        const filteredRemote = data.wishes.filter(w => !deletedWishIds.has(String(w.id)));
+                        wishesData = mergeWishesLists(filteredRemote, wishesData);
+                        persistWishesLocally();
+                        renderFloatingWishes();
+                    }
+                    return true;
+                }
+            } catch (e) {}
+            return false;
         }
 
         async function pushWithRetry(url, bodyStr, retries = 2) {
@@ -2455,121 +2259,99 @@
                 try {
                     const res = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'text/plain;charset=UTF-8'
-                        },
                         body: bodyStr,
                         keepalive: true
                     });
                     if (res.ok) return true;
-                } catch (err) {}
-                await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+                } catch (e) {}
+                await new Promise(r => setTimeout(r, 450 * (attempt + 1)));
             }
             return false;
         }
 
-        async function pushSharedCloudWishes(latestWish) {
-            persistWishesLocally();
-            if (latestWish && typeof window.saveWishToLiveCloud === 'function') {
-                await window.saveWishToLiveCloud(latestWish);
-            }
-            const syncPill = document.getElementById('cloud-sync-pill');
-            if (!latestWish) return;
-
-            const payload = {
-                action: 'add',
-                id: latestWish.id,
-                author: latestWish.author,
-                text: latestWish.text,
-                date: latestWish.date || '13/11/2026',
-                createdAt: latestWish.createdAt || Date.now()
+        async function pushToGlobalKVStore() {
+            const snapshot = {
+                wishes: wishesData.slice(0, 30),
+                deletedIds: Array.from(deletedWishIds).slice(-120),
+                updatedAt: Date.now()
             };
-
-            if (squadBroadcast) {
-                try { squadBroadcast.postMessage(payload); } catch (e) {}
-            }
-
-            const bodyStr = JSON.stringify(payload);
-            const [primaryOk, backupOk] = await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 2),
-                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 1)
-            ]);
-
-            if ((primaryOk || backupOk) && syncPill) {
-                syncPill.textContent = '🟢 Synced to All Profiles & Devices!';
+            try {
+                const res = await fetch(GLOBAL_KV_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(snapshot),
+                    keepalive: true
+                });
+                return res.ok;
+            } catch (e) {
+                return false;
             }
         }
 
-        function renderFloatingWishes() {
-            const layer = document.getElementById('floating-wishes-layer');
-            const list = document.getElementById('wishes-list');
-            const countLabel = document.getElementById('floating-wish-count-label');
-            const boardCounter = document.getElementById('wishes-board-counter');
+        async function fetchSharedCloudWishes(manualNotify = false) {
+            const syncPill = document.getElementById('cloud-sync-pill');
+            const [kvOk, p1, p2] = await Promise.all([
+                pullFromGlobalKVStore(),
+                pullFromNtfyEndpoint(NTFY_TOPIC_URL),
+                pullFromNtfyEndpoint(NTFY_BACKUP_URL)
+            ]);
+            if (syncPill && (kvOk || p1 || p2)) {
+                syncPill.textContent = `🟢 Live Squad Sync Active (${wishesData.length})`;
+            }
+            if (manualNotify) {
+                showToast(`Synced! ${wishesData.length} floating wish(es) loaded 🔄`, '🎈');
+            }
+        }
 
-            if (countLabel) {
-                countLabel.textContent = floatingVisible
-                    ? `Floating Wishes (${wishesData.length})`
-                    : `Show Wishes (${wishesData.length})`;
+        async function pushSharedCloudWishes(newWish) {
+            if (!newWish) return;
+            const payload = {
+                action: 'add',
+                id: newWish.id,
+                author: newWish.author,
+                text: newWish.text,
+                date: newWish.date || '13/11/2026',
+                createdAt: newWish.createdAt || Date.now()
+            };
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage(payload); } catch (e) {}
             }
-            if (boardCounter) {
-                boardCounter.textContent = `${wishesData.length} / 8 Buddies Floated`;
+            if (typeof window.saveWishToLiveCloud === 'function') {
+                await window.saveWishToLiveCloud(payload);
             }
+            const bodyStr = JSON.stringify(payload);
+            await Promise.all([
+                pushToGlobalKVStore(),
+                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 3),
+                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 2)
+            ]);
+            const syncPill = document.getElementById('cloud-sync-pill');
+            if (syncPill) {
+                syncPill.textContent = `🟢 Live Squad Sync Active (${wishesData.length})`;
+            }
+        }
 
-            if (layer) {
-                layer.innerHTML = '';
-                if (floatingVisible && wishesData.length > 0) {
-                    wishesData.forEach((wish, idx) => {
-                        const pos = floatingPositions[idx % floatingPositions.length];
-                        const colorClass = floatingColors[idx % floatingColors.length];
-                        const bubble = document.createElement('div');
-                        bubble.className = `floating-wish-bubble fixed max-w-[230px] sm:max-w-[260px] p-3.5 rounded-2xl bg-gradient-to-br ${colorClass} border backdrop-blur-md text-white shadow-2xl cursor-pointer`;
-                        if (pos.top) bubble.style.top = pos.top;
-                        if (pos.left) bubble.style.left = pos.left;
-                        if (pos.right) bubble.style.right = pos.right;
-                        bubble.style.setProperty('--drift-dur', `${6.5 + (idx % 4) * 1.1}s`);
-                        bubble.style.setProperty('--drift-delay', `${idx * 0.45}s`);
-                        bubble.title = 'Tap to celebrate this wish!';
-                        bubble.onclick = () => {
-                            triggerConfettiBurst(0.5, 0.45);
-                            showToast(`Celebrating ${wish.author}'s wish! 🥳`, '🎈');
-                        };
-                        bubble.innerHTML = `
-                            <div class="flex items-center justify-between gap-2 mb-1">
-                                <span class="text-[11px] font-extrabold text-amber-200 truncate">🎈 ${escapeHTML(wish.author)}</span>
-                                <div class="flex items-center gap-1.5 shrink-0">
-                                    <span class="text-[10px] text-white/75">${escapeHTML(wish.date || 'Today')}</span>
-                                    <button type="button" onclick="event.stopPropagation(); deleteFloatingWish(${idx})" title="Delete floating wish" aria-label="Delete floating wish" class="w-5 h-5 rounded-full bg-black/35 hover:bg-rose-500 text-white/90 hover:text-white text-[10px] font-bold flex items-center justify-center transition cursor-pointer">✕</button>
-                                </div>
-                            </div>
-                            <p class="text-xs leading-snug text-white/95 line-clamp-3">"${escapeHTML(wish.text)}"</p>
-                        `;
-                        layer.appendChild(bubble);
-                    });
-                }
+        function startLiveSquadStream() {
+            if (typeof EventSource === 'undefined') return;
+            if (sseConnection) {
+                try { sseConnection.close(); } catch (e) {}
             }
-
-            if (list) {
-                if (wishesData.length === 0) {
-                    list.innerHTML = `
-                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
-                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
-                        </div>
-                    `;
-                } else {
-                    list.innerHTML = wishesData.map((w, idx) => `
-                        <div class="p-3.5 rounded-2xl bg-white/5 border border-pink-400/25 flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <div class="text-xs font-extrabold text-pink-300 mb-0.5">🎈 ${escapeHTML(w.author)}</div>
-                                <p class="text-xs text-slate-200 leading-relaxed break-words">"${escapeHTML(w.text)}"</p>
-                            </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <span class="text-[10px] text-slate-400">${escapeHTML(w.date || 'Today')}</span>
-                                <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete wish" aria-label="Delete wish" class="w-6 h-6 rounded-full bg-white/10 hover:bg-rose-500/80 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center transition cursor-pointer">✕</button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            }
+            try {
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
+                sseConnection.onmessage = (event) => {
+                    try {
+                        const envelope = JSON.parse(event.data);
+                        if (!envelope || !envelope.message) return;
+                        const payload = JSON.parse(envelope.message);
+                        if (payload.action === 'delete') {
+                            window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
+                        } else if (payload.action === 'add' && payload.author && payload.text) {
+                            wishesData = mergeWishesLists([payload], wishesData);
+                            persistWishesLocally();
+                            renderFloatingWishes();
+                        }
+                    } catch (e) {}
+                };
+            } catch (e) {}
         }
 
         async function deleteFloatingWish(index) {
@@ -2591,149 +2373,357 @@
             }
             const delBody = JSON.stringify(delPayload);
             await Promise.all([
+                pushToGlobalKVStore(),
                 pushWithRetry(NTFY_TOPIC_URL, delBody, 3),
                 pushWithRetry(NTFY_BACKUP_URL, delBody, 2)
             ]);
         }
 
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function renderFloatingWishes() {
+            const layer = document.getElementById('floating-wishes-layer');
+            const listEl = document.getElementById('wishes-list');
+            const countLabel = document.getElementById('floating-wish-count-label');
+            const boardCounter = document.getElementById('wishes-board-counter');
+
+            if (countLabel) {
+                countLabel.textContent = `Floating Wishes (${wishesData.length})`;
+            }
+            if (boardCounter) {
+                const uniqueAuthors = new Set(wishesData.map(w => w.author.toLowerCase()));
+                boardCounter.textContent = `${Math.min(8, uniqueAuthors.size)} / 8 Buddies Floated`;
+            }
+
+            if (layer) {
+                layer.innerHTML = '';
+                if (floatingVisible) {
+                    const positions = [
+                        { top: '14%', left: '3%' },
+                        { top: '26%', right: '3%' },
+                        { top: '44%', left: '2%' },
+                        { top: '58%', right: '3%' },
+                        { top: '72%', left: '4%' },
+                        { top: '80%', right: '5%' }
+                    ];
+                    wishesData.slice(0, 6).forEach((wish, idx) => {
+                        const pos = positions[idx % positions.length];
+                        const bubble = document.createElement('div');
+                        bubble.className = 'floating-wish-bubble fixed max-w-[235px] sm:max-w-[270px] rounded-2xl bg-[#151138]/92 border border-pink-400/55 px-3.5 py-2.5 shadow-xl shadow-pink-500/25 backdrop-blur-md text-xs';
+                        if (pos.top) bubble.style.top = pos.top;
+                        if (pos.left) bubble.style.left = pos.left;
+                        if (pos.right) bubble.style.right = pos.right;
+                        bubble.style.setProperty('--drift-dur', `${6 + (idx % 4)}s`);
+                        bubble.style.setProperty('--drift-delay', `${idx * 0.5}s`);
+                        bubble.innerHTML = `
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <span class="font-display font-bold text-amber-300 truncate">🎈 ${escapeHtml(wish.author)}</span>
+                                <button type="button" onclick="deleteFloatingWish(${idx})" class="text-slate-400 hover:text-rose-400 font-bold text-[11px] cursor-pointer" title="Delete for all buddies">✕</button>
+                            </div>
+                            <p class="text-slate-100 leading-snug line-clamp-3">${escapeHtml(wish.text)}</p>
+                        `;
+                        layer.appendChild(bubble);
+                    });
+                }
+            }
+
+            if (listEl) {
+                if (wishesData.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
+                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
+                        </div>
+                    `;
+                } else {
+                    listEl.innerHTML = wishesData.map((w, idx) => `
+                        <div class="p-3.5 rounded-2xl bg-white/5 border border-pink-500/25 flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="font-display font-bold text-sm text-amber-300">${escapeHtml(w.author)}</span>
+                                    <span class="text-[10px] text-slate-400">${escapeHtml(w.date || '13/11/2026')}</span>
+                                </div>
+                                <p class="text-xs text-slate-200 leading-relaxed break-words">${escapeHtml(w.text)}</p>
+                            </div>
+                            <button type="button" onclick="deleteFloatingWish(${idx})" class="shrink-0 w-7 h-7 rounded-full bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 text-xs font-bold flex items-center justify-center cursor-pointer" title="Delete wish">✕</button>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+
         function toggleFloatingWishes() {
             floatingVisible = !floatingVisible;
             renderFloatingWishes();
-            showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '✨');
+            showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '🎈');
         }
 
-        // Re-sync immediately whenever a phone screen wakes up or switches back to the browser tab
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'visible') {
-                fetchSharedCloudWishes(false);
-                if (!sseConnection || sseConnection.readyState === 2) {
-                    startLiveSquadEventStream();
-                }
-            }
-        });
-        window.addEventListener('online', function() {
-            fetchSharedCloudWishes(false);
-            startLiveSquadEventStream();
-        });
+        function copySquadSyncLink() {
+            persistWishesLocally();
+            const url = window.location.href;
+            const tempInput = document.createElement('input');
+            tempInput.value = url;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showToast('Live Squad Sync Link copied! Paste it in WhatsApp 🔗', '📋');
+        }
 
-        // Start real-time SSE stream + cache-busted polling every 4 seconds
-        startLiveSquadEventStream();
-        setInterval(() => fetchSharedCloudWishes(false), 4000);
+        async function addNewSquadWish(author, text, cardMeta = null) {
+            const cleanAuthor = String(author || '').trim() || 'Fab 8 Buddy';
+            const cleanText = String(text || '').trim();
+            if (!cleanText) return;
+
+            const newWish = {
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                author: cleanAuthor,
+                text: cleanText,
+                date: new Date().toLocaleDateString('en-GB'),
+                createdAt: Date.now()
+            };
+
+            wishesData = [newWish, ...wishesData].slice(0, 30);
+            persistWishesLocally();
+            renderFloatingWishes();
+            triggerConfettiBurst(0.5, 0.4);
+            await pushSharedCloudWishes(newWish);
+
+            sendCardAndOpenShareModal(cardMeta || {
+                type: '🎈 Floating Anniversary Wish',
+                headline: `Wish from ${cleanAuthor} 🥳`,
+                body: cleanText,
+                author: `— ${cleanAuthor}`
+            });
+        }
 
         const wishFormEl = document.getElementById('wish-form');
         if (wishFormEl) {
-            wishFormEl.addEventListener('submit', function(e) {
+            wishFormEl.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const nameInput = document.getElementById('wish-name');
                 const textInput = document.getElementById('wish-text');
                 const author = nameInput ? nameInput.value.trim() : '';
                 const text = textInput ? textInput.value.trim() : '';
                 if (!author || !text) return;
-
-                const newWish = {
-                    id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                    author,
-                    text,
-                    date: '13/11/2026',
-                    createdAt: Date.now()
-                };
-                wishesData.unshift(newWish);
-                persistWishesLocally();
-
-                floatingVisible = true;
-
-                renderFloatingWishes();
-                triggerConfettiBurst(0.5, 0.45);
-                nameInput.value = '';
-                textInput.value = '';
-
-                pushSharedCloudWishes(newWish);
-
-                sendCardAndOpenShareModal({
-                    type: '🎈 Floating Anniversary Wish',
-                    headline: `4th Anniversary Wish from ${author}`,
-                    body: text,
-                    author: author
-                });
+                if (textInput) textInput.value = '';
+                await addNewSquadWish(author, text);
             });
         }
 
-        // ==========================================
-        // 5. VIRTUAL 4TH ANNIVERSARY CAKE
-        // ==========================================
-        let candlesLit = true;
+        async function sendGopiBirthdayWish() {
+            const senderInput = document.getElementById('gopi-bday-sender');
+            const msgInput = document.getElementById('gopi-bday-msg');
+            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
+            const msg = (msgInput && msgInput.value.trim()) || 'Happy Birthday Gopi bhai! 😂🎂🥳';
+            await addNewSquadWish(`${sender} 🎂 (For Gopi)`, msg, {
+                type: "🎂 Gopi's Birthday Card",
+                headline: 'Happy Birthday Gopi 😂🥳!',
+                body: msg,
+                author: `— With love from ${sender}`
+            });
+        }
 
+        if (squadBroadcast) {
+            squadBroadcast.onmessage = (ev) => {
+                const msg = ev.data;
+                if (!msg) return;
+                if (msg.action === 'delete') {
+                    window.registerRemoteDeletedWish(msg.wishId, msg.key, msg.deletedAt || 0);
+                } else if (msg.action === 'add' && msg.author && msg.text) {
+                    wishesData = mergeWishesLists([msg], wishesData);
+                    persistWishesLocally();
+                    renderFloatingWishes();
+                }
+            };
+        }
+
+        window.addEventListener('storage', (ev) => {
+            if (ev.key === WISHES_STORAGE_KEY || ev.key === DELETED_IDS_STORAGE_KEY) {
+                loadSavedWishesOnBoot().then(() => renderFloatingWishes());
+            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) fetchSharedCloudWishes(false);
+        });
+        window.addEventListener('online', () => fetchSharedCloudWishes(false));
+        setInterval(() => fetchSharedCloudWishes(false), 10000);
+
+        // ==========================================
+        // 5. SHAREABLE CARD MODAL, EMAIL & WHATSAPP
+        // ==========================================
+        let currentShareCard = {
+            type: '🎈 Floating Anniversary Wish',
+            headline: 'Happy 4th Anniversary!',
+            body: 'Four years of 😍Best buddies forever🥳!',
+            author: '— The Fab 8'
+        };
+
+        function sendCardAndOpenShareModal(card) {
+            currentShareCard = card;
+            const modal = document.getElementById('share-card-modal');
+            const badge = document.getElementById('card-badge-type');
+            const headline = document.getElementById('card-headline');
+            const body = document.getElementById('card-body-text');
+            const author = document.getElementById('card-author-tag');
+            const emailStatus = document.getElementById('email-delivery-badge');
+            const mailtoBtn = document.getElementById('mailto-fallback-btn');
+
+            if (badge) badge.textContent = card.type;
+            if (headline) headline.textContent = card.headline;
+            if (body) body.textContent = card.body;
+            if (author) author.textContent = card.author;
+
+            const subject = encodeURIComponent(`😍Best buddies forever🥳 - ${card.headline}`);
+            const mailBody = encodeURIComponent(`${card.headline}\n\n${card.body}\n\n${card.author}\n\nLive Link: ${window.location.href}`);
+            if (mailtoBtn) mailtoBtn.href = `mailto:mk9860490@gmail.com?subject=${subject}&body=${mailBody}`;
+
+            if (emailStatus) emailStatus.textContent = '✉️ Sending card to mk9860490@gmail.com...';
+            fetch('https://formsubmit.co/ajax/mk9860490@gmail.com', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                    _subject: `😍Best buddies forever🥳 - ${card.headline}`,
+                    Card_Type: card.type,
+                    Headline: card.headline,
+                    Message: card.body,
+                    From: card.author
+                })
+            })
+                .then(r => {
+                    if (emailStatus) {
+                        emailStatus.textContent = r.ok
+                            ? '✅ Card sent to mk9860490@gmail.com!'
+                            : '✅ Card ready to share below!';
+                    }
+                })
+                .catch(() => {
+                    if (emailStatus) emailStatus.textContent = '✅ Card ready to share below!';
+                });
+
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        function closeShareModal() {
+            const modal = document.getElementById('share-card-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function shareCardToWhatsApp() {
+            const text = `*😍Best buddies forever🥳*\n_${currentShareCard.type}_\n\n*${currentShareCard.headline}*\n"${currentShareCard.body}"\n${currentShareCard.author}\n\n🔗 Live Squad Wall: ${window.location.href}`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+        }
+
+        function downloadCardAsImage() {
+            const canvas = document.getElementById('card-export-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 900, 540);
+            grad.addColorStop(0, '#1e1b4b');
+            grad.addColorStop(0.5, '#581c87');
+            grad.addColorStop(1, '#831843');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 900, 540);
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillText('😍 Best buddies forever 🥳 • 4th Anniversary', 55, 75);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 40px sans-serif';
+            ctx.fillText(currentShareCard.headline.slice(0, 38), 55, 160);
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = '26px sans-serif';
+            const words = currentShareCard.body.split(' ');
+            let line = '';
+            let y = 235;
+            words.forEach(w => {
+                const test = line + w + ' ';
+                if (ctx.measureText(test).width > 780) {
+                    ctx.fillText(line, 55, y);
+                    line = w + ' ';
+                    y += 38;
+                } else {
+                    line = test;
+                }
+            });
+            ctx.fillText(line, 55, y);
+
+            ctx.fillStyle = '#a5f3fc';
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillText(`${currentShareCard.author}   |   13/11/2022 – 13/11/2026`, 55, 480);
+
+            const link = document.createElement('a');
+            link.download = 'best-buddies-forever-card.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast('Card downloaded as .PNG! 🖼️', '🥳');
+        }
+
+        // ==========================================
+        // 6. VIRTUAL CAKE & SUPERLATIVE WHEEL
+        // ==========================================
         function blowOutCandles() {
-            if (!candlesLit) {
-                showToast('Candles already blown out! Tap Relight Candles 🔥', '🎂');
-                return;
-            }
-            candlesLit = false;
-            document.querySelectorAll('.flame').forEach(f => f.classList.add('blown-out'));
-            const statusText = document.getElementById('cake-status-text');
-            if (statusText) {
-                statusText.innerHTML = '🎉 <strong>Happy 4th Anniversary 😍Best buddies forever🥳!</strong> May all our wishes come true!';
-            }
+            const flames = document.querySelectorAll('.flame');
+            flames.forEach(f => f.classList.add('blown-out'));
+            const status = document.getElementById('cake-status-text');
+            if (status) status.textContent = '🎉 Yay! All 4 candles blown out! Happy 4th Anniversary Fab 8!';
             triggerConfettiBurst(0.35, 0.55);
-            setTimeout(() => triggerConfettiBurst(0.65, 0.55), 250);
-            showToast('Happy 4th Anniversary Best Buddies! 🎂🥳', '🎂');
+            showToast('Happy 4th Anniversary 😍Best buddies forever🥳!', '🎂');
         }
 
         function relightCandles() {
-            candlesLit = true;
             document.querySelectorAll('.flame').forEach(f => f.classList.remove('blown-out'));
-            const statusText = document.getElementById('cake-status-text');
-            if (statusText) {
-                statusText.textContent = 'Tap the cake below to blow out all 4 candles! 🌬️';
-            }
-            showToast('Candles relit! Make another wish 🔥', '✨');
+            const status = document.getElementById('cake-status-text');
+            if (status) status.textContent = 'Tap the cake below to blow out all 4 candles! 🌬️';
         }
 
-        // ==========================================
-        // 6. SQUAD SUPERLATIVE PICKER
-        // ==========================================
         const superlativePrompts = [
             "Most likely to say 'I'm 5 mins away' while still in bed",
-            "Most likely to start a 3-hour group debate at 2:00 AM",
-            "Most likely to plan a Goa trip that never leaves the WhatsApp chat",
-            "Most likely to send 47 stickers in a row without typing a single word",
-            "Most likely to take 100 photos and still say 'I have nothing to post'",
-            "Most likely to wake up at 12:00 AM sharp for everyone's birthday",
-            "Most likely to reply 'Haha' to a serious paragraph",
-            "Most likely to keep 😍Best buddies forever🥳 alive at age 80!"
+            "Most likely to send a 4-minute voice note instead of texting",
+            "Most likely to plan a whole trip and cancel at the last second",
+            "Most likely to reply 3 business days later",
+            "Most likely to judge a hangout solely by the food menu",
+            "Most likely to drop deep life advice at 2:30 AM",
+            "Most likely to reply with a sticker within 0.2 seconds",
+            "Most likely to hype everyone's Instagram photo 10 times"
         ];
-
         let lastSuperlativeResult = null;
-        let isSpinning = false;
 
         function spinSuperlative() {
-            if (isSpinning) return;
-            isSpinning = true;
+            const promptEl = document.getElementById('superlative-prompt');
             const winnerEl = document.getElementById('wheel-winner');
             const emojiEl = document.getElementById('wheel-winner-emoji');
-            const promptEl = document.getElementById('superlative-prompt');
             const shareBtn = document.getElementById('share-superlative-btn');
-
-            const chosenPrompt = superlativePrompts[Math.floor(Math.random() * superlativePrompts.length)];
-            if (promptEl) promptEl.textContent = `"${chosenPrompt}"`;
 
             let ticks = 0;
             const interval = setInterval(() => {
-                const randBuddy = fab8Roster[ticks % fab8Roster.length];
+                const randBuddy = fab8Roster[Math.floor(Math.random() * fab8Roster.length)];
+                const randPrompt = superlativePrompts[Math.floor(Math.random() * superlativePrompts.length)];
                 if (winnerEl) winnerEl.textContent = randBuddy.name;
                 if (emojiEl) emojiEl.textContent = randBuddy.emoji;
+                if (promptEl) promptEl.textContent = `"${randPrompt}"`;
                 ticks++;
-                if (ticks > 16) {
+                if (ticks > 14) {
                     clearInterval(interval);
-                    const finalWinner = fab8Roster[Math.floor(Math.random() * fab8Roster.length)];
-                    if (winnerEl) winnerEl.textContent = finalWinner.name;
-                    if (emojiEl) emojiEl.textContent = finalWinner.emoji;
                     lastSuperlativeResult = {
-                        prompt: chosenPrompt,
-                        winner: `${finalWinner.name} ${finalWinner.emoji}`
+                        prompt: randPrompt,
+                        buddy: randBuddy
                     };
                     if (shareBtn) shareBtn.classList.remove('hidden');
-                    isSpinning = false;
                     triggerConfettiBurst(0.68, 0.55);
                 }
             }, 75);
@@ -2742,126 +2732,103 @@
         function shareLastSuperlative() {
             if (!lastSuperlativeResult) return;
             sendCardAndOpenShareModal({
-                type: '🎰 Squad Superlative Winner',
-                headline: `${lastSuperlativeResult.winner} Won!`,
-                body: `Prompt: "${lastSuperlativeResult.prompt}"`,
-                author: 'Squad Wheel'
+                type: '🎰 Squad Superlative Award',
+                headline: `${lastSuperlativeResult.buddy.name} ${lastSuperlativeResult.buddy.emoji} Wins!`,
+                body: `Voted "${lastSuperlativeResult.prompt}" by 😍Best buddies forever🥳!`,
+                author: '— Squad Superlative Wheel'
             });
         }
 
         // ==========================================
-        // 7. GAME 1: FAB 8 LIVE SQUAD HOT POTATO & PASS-THE-BOMB
+        // 7. GAME 1: FAB 8 HOT POTATO & PASS-THE-BOMB
         // ==========================================
-        let bombActive = false;
-        let bombIndex = 0;
+        let bombHolderIndex = 0;
         let bombDirection = 1;
-        let bombStepTimer = null;
-        let bombExplodeTimeout = null;
-        let bombIntervalMs = 260;
-        let lastBombVictim = null;
-
-        const bombDares = [
-            "Drop a voice note singing 'Happy 4th Anniversary Best Buddies' in the WhatsApp group right now!",
-            "Send your funniest unfiltered selfie in 😍Best buddies forever🥳 within 30 seconds!",
-            "Treat the Fab 8 squad to samosas or chai on our next hangout!",
-            "Write a 3-line appreciation post for the person sitting right after you in the Fab 8 list!",
-            "Change your WhatsApp bio to '😍Best buddies forever🥳 4 Years Strong!' for 24 hours!"
-        ];
+        let bombInterval = null;
+        let bombTimeout = null;
+        let bombActive = false;
+        let lastBombLoser = null;
 
         function renderHotPotatoRing(activeIdx = -1, exploded = false) {
             const ring = document.getElementById('hot-potato-ring');
             if (!ring) return;
-            ring.innerHTML = fab8Roster.map((b, i) => {
-                const isHolder = i === activeIdx;
-                let borderStyle = 'border-white/15 bg-white/5';
-                let badge = `<span class="text-lg">${b.emoji}</span>`;
-                if (isHolder && !exploded) {
-                    borderStyle = 'border-amber-400 bg-amber-500/25 shadow-[0_0_25px_rgba(251,191,36,0.65)] scale-105';
-                    badge = `<span class="text-2xl animate-bounce">💣</span>`;
-                } else if (isHolder && exploded) {
-                    borderStyle = 'border-rose-500 bg-rose-600/35 shadow-[0_0_30px_rgba(244,63,94,0.85)] scale-105';
-                    badge = `<span class="text-2xl">💥</span>`;
-                }
+            ring.innerHTML = fab8Roster.map((b, idx) => {
+                const hasBomb = idx === activeIdx;
+                const borderClass = hasBomb
+                    ? (exploded ? 'border-rose-500 bg-rose-600/35 scale-105 shadow-lg shadow-rose-500/40' : 'border-amber-400 bg-amber-500/25 scale-105 shadow-lg shadow-amber-500/30')
+                    : 'border-white/15 bg-white/5';
                 return `
-                    <div class="p-3.5 rounded-2xl border ${borderStyle} transition-all duration-150 flex items-center justify-between gap-2">
-                        <div class="min-w-0">
-                            <div class="font-display font-bold text-sm sm:text-base text-white truncate">${b.name}</div>
-                            <div class="text-[10px] text-slate-300 truncate">${b.title}</div>
-                        </div>
-                        <div class="shrink-0">${badge}</div>
+                    <div class="p-3.5 rounded-2xl border-2 ${borderClass} text-center transition-all">
+                        <div class="text-2xl mb-1">${hasBomb ? (exploded ? '💥' : '💣') : b.emoji}</div>
+                        <div class="font-display font-bold text-sm text-white">${b.name}</div>
+                        <div class="text-[10px] text-slate-300 truncate">${hasBomb ? (exploded ? 'CAUGHT!' : 'HOLDING BOMB!') : b.title}</div>
                     </div>
                 `;
             }).join('');
         }
 
         function startHotPotatoGame() {
-            if (bombActive) return;
+            clearInterval(bombInterval);
+            clearTimeout(bombTimeout);
             bombActive = true;
-            bombIndex = Math.floor(Math.random() * fab8Roster.length);
+            bombHolderIndex = Math.floor(Math.random() * fab8Roster.length);
             bombDirection = 1;
-            bombIntervalMs = 240;
+            renderHotPotatoRing(bombHolderIndex, false);
 
-            const startBtn = document.getElementById('bomb-start-btn');
             const passBtn = document.getElementById('bomb-pass-btn');
             const revBtn = document.getElementById('bomb-reverse-btn');
             const shareBtn = document.getElementById('bomb-share-btn');
             const titleEl = document.getElementById('bomb-status-title');
             const subEl = document.getElementById('bomb-status-sub');
 
-            if (startBtn) startBtn.disabled = true;
             if (passBtn) passBtn.disabled = false;
             if (revBtn) revBtn.disabled = false;
             if (shareBtn) shareBtn.classList.add('hidden');
-            if (titleEl) titleEl.textContent = '💣 Fuse Lit! Pass the Bomb Fast!';
-            if (subEl) subEl.textContent = 'Tap "Pass Now!" or "Reverse" before the timer hits zero!';
+            if (titleEl) titleEl.textContent = '🔥 Fuse Lit! Pass Fast!';
+            if (subEl) subEl.textContent = `Currently with ${fab8Roster[bombHolderIndex].name}! Tap Pass Now!`;
 
-            renderHotPotatoRing(bombIndex, false);
+            bombInterval = setInterval(() => {
+                if (!bombActive) return;
+                bombHolderIndex = (bombHolderIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
+                renderHotPotatoRing(bombHolderIndex, false);
+                if (subEl) subEl.textContent = `Ticking on ${fab8Roster[bombHolderIndex].name} ${fab8Roster[bombHolderIndex].emoji}!`;
+            }, 650);
 
-            bombStepTimer = setInterval(() => {
-                bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
-                renderHotPotatoRing(bombIndex, false);
-            }, bombIntervalMs);
-
-            const fuseDuration = 4500 + Math.random() * 4500;
-            bombExplodeTimeout = setTimeout(() => {
-                clearInterval(bombStepTimer);
+            const fuseMs = 4500 + Math.floor(Math.random() * 4500);
+            bombTimeout = setTimeout(() => {
                 bombActive = false;
-                if (startBtn) startBtn.disabled = false;
+                clearInterval(bombInterval);
+                const loser = fab8Roster[bombHolderIndex];
+                lastBombLoser = loser;
+                renderHotPotatoRing(bombHolderIndex, true);
                 if (passBtn) passBtn.disabled = true;
                 if (revBtn) revBtn.disabled = true;
-
-                const victim = fab8Roster[bombIndex];
-                const dare = bombDares[Math.floor(Math.random() * bombDares.length)];
-                lastBombVictim = { buddy: victim, dare };
-
-                renderHotPotatoRing(bombIndex, true);
-                triggerConfettiBurst(0.5, 0.6);
-
-                if (titleEl) titleEl.textContent = `💥 BOOM! Caught ${victim.name} ${victim.emoji}!`;
-                if (subEl) subEl.textContent = `Anniversary Dare: ${dare}`;
                 if (shareBtn) shareBtn.classList.remove('hidden');
-            }, fuseDuration);
+                if (titleEl) titleEl.textContent = `💥 BOOM! ${loser.name} ${loser.emoji} Owes the Squad a Treat!`;
+                if (subEl) subEl.textContent = 'Tap "Share Dare Card" to post the penalty in the WhatsApp group!';
+                triggerConfettiBurst(0.5, 0.5);
+            }, fuseMs);
         }
 
         function manualPassBomb() {
             if (!bombActive) return;
-            bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
-            renderHotPotatoRing(bombIndex, false);
+            bombHolderIndex = (bombHolderIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
+            renderHotPotatoRing(bombHolderIndex, false);
         }
 
         function reverseBombDirection() {
             if (!bombActive) return;
             bombDirection *= -1;
-            showToast('Direction Reversed! 🔄', '🔄');
+            showToast('Direction reversed! 🔄', '⚡');
         }
 
         function shareBombLoserCard() {
-            if (!lastBombVictim) return;
+            if (!lastBombLoser) return;
             sendCardAndOpenShareModal({
-                type: '💣 Hot Potato Party Challenge',
-                headline: `${lastBombVictim.buddy.name} ${lastBombVictim.buddy.emoji} Caught the Bomb!`,
-                body: `4th Anniversary Challenge: ${lastBombVictim.dare}`,
-                author: 'Fab 8 Party Bomb'
+                type: '💣 Hot Potato Party Dare',
+                headline: `${lastBombLoser.name} ${lastBombLoser.emoji} Got Caught!`,
+                body: `The 4th Anniversary Party Bomb exploded on ${lastBombLoser.name}! Official Squad Dare: Next snacks & chai treat is on you!`,
+                author: '— Fab 8 Party Arena'
             });
         }
 
@@ -2879,7 +2846,6 @@
             memMatchedCount = 0;
             memMoves = 0;
             memLock = false;
-
             const movesEl = document.getElementById('mem-moves');
             const pairsEl = document.getElementById('mem-pairs');
             const winBanner = document.getElementById('memory-win-banner');
@@ -2889,10 +2855,9 @@
 
             const deck = [];
             fab8Roster.forEach((b, idx) => {
-                deck.push({ pairId: idx, label: b.name, sub: b.emoji, type: 'name' });
-                deck.push({ pairId: idx, label: b.title, sub: 'Role', type: 'role' });
+                deck.push({ pairId: idx, label: b.name, sub: b.emoji, isTitle: false });
+                deck.push({ pairId: idx, label: b.title, sub: 'Squad Role', isTitle: true });
             });
-
             for (let i = deck.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -2901,59 +2866,54 @@
 
             const grid = document.getElementById('memory-grid');
             if (!grid) return;
-            grid.innerHTML = memCards.map((c, idx) => `
-                <div id="mem-tile-${idx}" onclick="flipMemoryTile(${idx})" class="mem-tile cursor-pointer select-none">
+            grid.innerHTML = memCards.map((card, i) => `
+                <div id="mem-tile-${i}" onclick="flipMemoryTile(${i})" class="mem-tile cursor-pointer select-none">
                     <div class="mem-tile-inner">
-                        <div class="mem-tile-front bg-gradient-to-br from-[#1d154a] to-[#2e145e] border border-pink-400/35 shadow-md hover:border-cyan-400 transition">
-                            <span class="text-xl sm:text-2xl">🥳</span>
-                            <span class="text-[10px] font-bold text-pink-200 mt-1">BBF #${idx + 1}</span>
+                        <div class="mem-tile-front bg-gradient-to-br from-[#231955] to-[#140e36] border border-purple-400/35 text-pink-300 font-display font-bold text-xl shadow">
+                            🥳
                         </div>
-                        <div class="mem-tile-back bg-gradient-to-br from-[#151b4d] to-[#2a1252] border-2 border-cyan-400/60 text-center shadow-lg">
-                            <span class="text-lg sm:text-xl">${c.sub === 'Role' ? '🏷️' : c.sub}</span>
-                            <span class="font-display text-xs sm:text-sm font-bold text-white leading-tight mt-1">${c.label}</span>
+                        <div class="mem-tile-back bg-[#1a1344] border-2 border-cyan-400/50 text-center shadow-lg">
+                            <div class="text-lg mb-0.5">${card.isTitle ? '🏷️' : card.sub}</div>
+                            <div class="font-display font-bold text-xs sm:text-sm text-white leading-tight">${card.label}</div>
                         </div>
                     </div>
                 </div>
             `).join('');
         }
 
-        function flipMemoryTile(idx) {
+        function flipMemoryTile(index) {
             if (memLock) return;
-            const tile = document.getElementById(`mem-tile-${idx}`);
+            const tile = document.getElementById(`mem-tile-${index}`);
             if (!tile || tile.classList.contains('revealed') || tile.classList.contains('matched')) return;
 
             tile.classList.add('revealed');
-            memFlipped.push(idx);
+            memFlipped.push(index);
 
             if (memFlipped.length === 2) {
-                memLock = true;
                 memMoves++;
                 const movesEl = document.getElementById('mem-moves');
                 if (movesEl) movesEl.textContent = String(memMoves);
 
-                const [firstIdx, secondIdx] = memFlipped;
-                if (memCards[firstIdx].pairId === memCards[secondIdx].pairId) {
-                    setTimeout(() => {
-                        document.getElementById(`mem-tile-${firstIdx}`)?.classList.add('matched');
-                        document.getElementById(`mem-tile-${secondIdx}`)?.classList.add('matched');
-                        memMatchedCount++;
-                        const pairsEl = document.getElementById('mem-pairs');
-                        if (pairsEl) pairsEl.textContent = `${memMatchedCount}/8`;
-                        memFlipped = [];
-                        memLock = false;
-
-                        if (memMatchedCount === 8) {
-                            triggerConfettiBurst(0.5, 0.6);
-                            const winBanner = document.getElementById('memory-win-banner');
-                            const winSub = document.getElementById('memory-win-sub');
-                            if (winSub) winSub.textContent = `Matched all 8 legends in ${memMoves} moves!`;
-                            if (winBanner) winBanner.classList.remove('hidden');
-                        }
-                    }, 350);
+                const [a, b] = memFlipped;
+                if (memCards[a].pairId === memCards[b].pairId) {
+                    document.getElementById(`mem-tile-${a}`)?.classList.add('matched');
+                    document.getElementById(`mem-tile-${b}`)?.classList.add('matched');
+                    memFlipped = [];
+                    memMatchedCount++;
+                    const pairsEl = document.getElementById('mem-pairs');
+                    if (pairsEl) pairsEl.textContent = `${memMatchedCount}/8`;
+                    if (memMatchedCount === 8) {
+                        const winBanner = document.getElementById('memory-win-banner');
+                        const winSub = document.getElementById('memory-win-sub');
+                        if (winSub) winSub.textContent = `Completed all 8 Fab Buddies pairs in ${memMoves} moves!`;
+                        if (winBanner) winBanner.classList.remove('hidden');
+                        triggerConfettiBurst(0.5, 0.5);
+                    }
                 } else {
+                    memLock = true;
                     setTimeout(() => {
-                        document.getElementById(`mem-tile-${firstIdx}`)?.classList.remove('revealed');
-                        document.getElementById(`mem-tile-${secondIdx}`)?.classList.remove('revealed');
+                        document.getElementById(`mem-tile-${a}`)?.classList.remove('revealed');
+                        document.getElementById(`mem-tile-${b}`)?.classList.remove('revealed');
                         memFlipped = [];
                         memLock = false;
                     }, 750);
@@ -2963,387 +2923,172 @@
 
         function shareMemoryScoreCard() {
             sendCardAndOpenShareModal({
-                type: '🃏 Fab 8 Memory Match Score',
-                headline: `Cleared All 8 Buddies in ${memMoves} Moves!`,
-                body: `Matched Gowri, Sai, Shashi, Gopi, Alisha, Mohan, Minni & Yuvaraj in ${memMoves} moves on the 4th Anniversary Memory Challenge!`,
-                author: 'Fab 8 Memory Pro'
+                type: '🃏 Fab 8 Memory Champion',
+                headline: `Matched All 8 Buddies in ${memMoves} Moves!`,
+                body: `I matched every Fab 8 legend with their iconic squad title in ${memMoves} moves on 😍Best buddies forever🥳!`,
+                author: '— Memory Match Winner'
             });
         }
 
         // ==========================================
-        // 9. GAME 3: SQUAD STICKER BLITZ & BREAD OMELET CATCHER
+        // 9. GAME 3: SQUAD STICKER BLITZ ARCADE
         // ==========================================
         let arcadeRunning = false;
         let arcadeScore = 0;
         let arcadeCombo = 1;
         let arcadeTimeLeft = 25;
         let arcadePlayerX = 50;
-        let arcadeItems = [];
         let arcadeSpawnTimer = null;
-        let arcadeCountdownTimer = null;
+        let arcadeClockTimer = null;
         let arcadeAnimFrame = null;
+        let arcadeItems = [];
 
-        const arcadeCatalog = [
-            { emoji: '🍳', points: 15, good: true },
-            { emoji: '🎂', points: 30, good: true },
-            { emoji: '😂', points: 10, good: true },
-            { emoji: '🎙️', points: 12, good: true },
-            { emoji: '⏳', points: -20, good: false }
-        ];
+        const arcadeArena = document.getElementById('arcade-arena');
+        const arcadePlayer = document.getElementById('arcade-player');
+        const arcadeBuddySelect = document.getElementById('arcade-buddy-select');
 
-        function updateArcadePlayerPosition(clientX) {
-            const arena = document.getElementById('arcade-arena');
-            const player = document.getElementById('arcade-player');
-            if (!arena || !player) return;
-            const rect = arena.getBoundingClientRect();
-            const pct = Math.max(8, Math.min(92, ((clientX - rect.left) / rect.width) * 100));
-            arcadePlayerX = pct;
-            player.style.left = `${pct}%`;
+        if (arcadeBuddySelect && arcadePlayer) {
+            arcadeBuddySelect.addEventListener('change', () => {
+                arcadePlayer.textContent = arcadeBuddySelect.value;
+            });
         }
 
-        const arenaEl = document.getElementById('arcade-arena');
-        if (arenaEl) {
-            arenaEl.addEventListener('mousemove', e => {
-                if (arcadeRunning) updateArcadePlayerPosition(e.clientX);
-            });
-            arenaEl.addEventListener('touchmove', e => {
-                if (arcadeRunning && e.touches[0]) {
-                    updateArcadePlayerPosition(e.touches[0].clientX);
-                }
+        function moveArcadePlayer(clientX) {
+            if (!arcadeArena || !arcadePlayer) return;
+            const rect = arcadeArena.getBoundingClientRect();
+            const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+            arcadePlayerX = pct;
+            arcadePlayer.style.left = `${pct}%`;
+        }
+
+        if (arcadeArena) {
+            arcadeArena.addEventListener('mousemove', (e) => moveArcadePlayer(e.clientX));
+            arcadeArena.addEventListener('touchmove', (e) => {
+                if (e.touches && e.touches[0]) moveArcadePlayer(e.touches[0].clientX);
             }, { passive: true });
         }
 
         function startStickerBlitz() {
-            if (arcadeRunning) return;
+            clearInterval(arcadeSpawnTimer);
+            clearInterval(arcadeClockTimer);
+            cancelAnimationFrame(arcadeAnimFrame);
+
             arcadeRunning = true;
             arcadeScore = 0;
             arcadeCombo = 1;
             arcadeTimeLeft = 25;
             arcadeItems = [];
 
-            const selectEl = document.getElementById('arcade-buddy-select');
-            const playerEl = document.getElementById('arcade-player');
-            const overlay = document.getElementById('arcade-overlay');
             const itemsLayer = document.getElementById('arcade-items-layer');
-
-            if (playerEl && selectEl) playerEl.textContent = selectEl.value;
-            if (overlay) overlay.classList.add('hidden');
+            const overlay = document.getElementById('arcade-overlay');
+            const shareBtn = document.getElementById('arcade-share-btn');
             if (itemsLayer) itemsLayer.innerHTML = '';
-
-            document.getElementById('arcade-score').textContent = '0';
-            document.getElementById('arcade-combo').textContent = '1x';
-            document.getElementById('arcade-timer').textContent = '25s';
+            if (overlay) overlay.classList.add('hidden');
+            if (shareBtn) shareBtn.classList.add('hidden');
+            updateArcadeHud();
 
             arcadeSpawnTimer = setInterval(() => {
-                const template = arcadeCatalog[Math.floor(Math.random() * arcadeCatalog.length)];
-                const itemEl = document.createElement('div');
-                itemEl.className = 'absolute text-2xl sm:text-3xl pointer-events-none drop-shadow';
-                itemEl.textContent = template.emoji;
+                if (!arcadeRunning || !itemsLayer) return;
+                const pool = [
+                    { emoji: '🍳', pts: 10, bad: false },
+                    { emoji: '🎂', pts: 20, bad: false },
+                    { emoji: '😂', pts: 15, bad: false },
+                    { emoji: '🍔', pts: 15, bad: false },
+                    { emoji: '⏳', pts: -15, bad: true }
+                ];
+                const pick = pool[Math.floor(Math.random() * pool.length)];
+                const el = document.createElement('div');
+                el.className = 'absolute text-2xl sm:text-3xl pointer-events-none select-none';
                 const xPct = 8 + Math.random() * 84;
-                itemEl.style.left = `${xPct}%`;
-                itemEl.style.top = '-24px';
-                if (itemsLayer) itemsLayer.appendChild(itemEl);
-
-                arcadeItems.push({
-                    el: itemEl,
-                    x: xPct,
-                    y: -24,
-                    speed: 2.6 + Math.random() * 2.2,
-                    points: template.points,
-                    good: template.good
-                });
+                el.style.left = `${xPct}%`;
+                el.style.top = '-24px';
+                el.textContent = pick.emoji;
+                itemsLayer.appendChild(el);
+                arcadeItems.push({ el, x: xPct, y: -24, speed: 2.6 + Math.random() * 2.2, pts: pick.pts, bad: pick.bad });
             }, 520);
 
-            arcadeCountdownTimer = setInterval(() => {
+            arcadeClockTimer = setInterval(() => {
                 arcadeTimeLeft--;
-                const timerEl = document.getElementById('arcade-timer');
-                if (timerEl) timerEl.textContent = `${arcadeTimeLeft}s`;
+                updateArcadeHud();
                 if (arcadeTimeLeft <= 0) {
                     endStickerBlitz();
                 }
             }, 1000);
 
-            arcadeLoop();
+            stepArcadeLoop();
         }
 
-        function arcadeLoop() {
-            if (!arcadeRunning) return;
-            const arena = document.getElementById('arcade-arena');
-            const arenaH = arena ? arena.clientHeight : 300;
+        function updateArcadeHud() {
+            const s = document.getElementById('arcade-score');
+            const c = document.getElementById('arcade-combo');
+            const t = document.getElementById('arcade-timer');
+            if (s) s.textContent = String(arcadeScore);
+            if (c) c.textContent = `${arcadeCombo}x`;
+            if (t) t.textContent = `${arcadeTimeLeft}s`;
+        }
 
-            for (let i = arcadeItems.length - 1; i >= 0; i--) {
-                const item = arcadeItems[i];
+        function stepArcadeLoop() {
+            if (!arcadeRunning || !arcadeArena) return;
+            const height = arcadeArena.clientHeight || 300;
+            arcadeItems = arcadeItems.filter(item => {
                 item.y += item.speed;
                 item.el.style.top = `${item.y}px`;
 
-                // Catch detection near bottom
-                if (item.y >= arenaH - 54 && item.y <= arenaH - 14 && Math.abs(item.x - arcadePlayerX) < 11) {
-                    if (item.good) {
-                        arcadeScore += item.points * arcadeCombo;
-                        arcadeCombo = Math.min(5, arcadeCombo + 1);
-                    } else {
-                        arcadeScore = Math.max(0, arcadeScore + item.points);
+                if (item.y >= height - 56 && item.y <= height - 16 && Math.abs(item.x - arcadePlayerX) < 13) {
+                    if (item.bad) {
+                        arcadeScore = Math.max(0, arcadeScore + item.pts);
                         arcadeCombo = 1;
+                    } else {
+                        arcadeScore += item.pts * arcadeCombo;
+                        arcadeCombo = Math.min(5, arcadeCombo + 1);
                     }
-                    document.getElementById('arcade-score').textContent = String(arcadeScore);
-                    document.getElementById('arcade-combo').textContent = `${arcadeCombo}x`;
+                    updateArcadeHud();
                     item.el.remove();
-                    arcadeItems.splice(i, 1);
-                    continue;
+                    return false;
                 }
-
-                if (item.y > arenaH + 20) {
-                    if (item.good) arcadeCombo = 1;
-                    document.getElementById('arcade-combo').textContent = `${arcadeCombo}x`;
+                if (item.y > height + 20) {
                     item.el.remove();
-                    arcadeItems.splice(i, 1);
+                    return false;
                 }
-            }
-
-            arcadeAnimFrame = requestAnimationFrame(arcadeLoop);
+                return true;
+            });
+            arcadeAnimFrame = requestAnimationFrame(stepArcadeLoop);
         }
 
         function endStickerBlitz() {
             arcadeRunning = false;
             clearInterval(arcadeSpawnTimer);
-            clearInterval(arcadeCountdownTimer);
+            clearInterval(arcadeClockTimer);
             cancelAnimationFrame(arcadeAnimFrame);
 
             const overlay = document.getElementById('arcade-overlay');
-            const titleEl = document.getElementById('arcade-overlay-title');
-            const subEl = document.getElementById('arcade-overlay-sub');
+            const title = document.getElementById('arcade-overlay-title');
+            const sub = document.getElementById('arcade-overlay-sub');
             const shareBtn = document.getElementById('arcade-share-btn');
-            const playerName = document.getElementById('arcade-buddy-select')?.value || 'Fab 8 Buddy';
+            const buddyName = arcadeBuddySelect ? arcadeBuddySelect.value : 'Fab 8 Buddy';
 
-            if (titleEl) titleEl.textContent = `🏆 ${playerName} Scored ${arcadeScore} pts!`;
-            if (subEl) subEl.textContent = 'Can any other buddy in 😍Best buddies forever🥳 beat this score?';
+            if (title) title.textContent = `🎉 Time's Up! Final Score: ${arcadeScore}`;
+            if (sub) sub.textContent = `${buddyName} crushed the Squad Sticker Blitz with ${arcadeScore} pts!`;
             if (shareBtn) shareBtn.classList.remove('hidden');
             if (overlay) overlay.classList.remove('hidden');
-            triggerConfettiBurst(0.5, 0.6);
+            triggerConfettiBurst(0.5, 0.5);
         }
 
         function shareArcadeScoreCard() {
-            const playerName = document.getElementById('arcade-buddy-select')?.value || 'Fab 8 Buddy';
+            const buddyName = arcadeBuddySelect ? arcadeBuddySelect.value : 'Fab 8 Buddy';
             sendCardAndOpenShareModal({
-                type: '🍳 Squad Sticker Blitz High Score',
-                headline: `${playerName} Scored ${arcadeScore} Points!`,
-                body: `Caught Bread Omelets, Anniversary Cakes & Gopi's Memes in 25 seconds! Beat ${arcadeScore} pts if you can!`,
-                author: playerName
+                type: '⚡ Squad Sticker Blitz Score',
+                headline: `${buddyName} Scored ${arcadeScore} Pts!`,
+                body: `Caught Bread Omelets & Birthday Cakes in the 4th Anniversary Sticker Blitz on 😍Best buddies forever🥳!`,
+                author: `— ${buddyName}`
             });
-        }
-
-        // ==========================================
-        // 9B. GOPI BIRTHDAY WISH LAUNCHER
-        // ==========================================
-        function sendGopiBirthdayWish() {
-            const senderInput = document.getElementById('gopi-bday-sender');
-            const msgInput = document.getElementById('gopi-bday-msg');
-            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
-            const msg = (msgInput && msgInput.value.trim()) || 'Happy Birthday Gopi! 😂🎂🥳';
-
-            const newWish = {
-                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                author: `${sender} → Gopi 🎂`,
-                text: msg,
-                date: 'Nov B’day',
-                createdAt: Date.now()
-            };
-            wishesData.unshift(newWish);
-            persistWishesLocally();
-            floatingVisible = true;
-            renderFloatingWishes();
-            pushSharedCloudWishes(newWish);
-
-            triggerConfettiBurst(0.3, 0.4);
-            setTimeout(() => triggerConfettiBurst(0.7, 0.4), 220);
-
-            sendCardAndOpenShareModal({
-                type: '🎂 Happy Birthday Gopi 😂🥳',
-                headline: `Happy Birthday Gopi!`,
-                body: msg,
-                author: sender
-            });
-        }
-
-        // ==========================================
-        // 10. AUTO-EMAIL TO mk9860490@gmail.com & SHAREABLE CARD MODAL
-        // ==========================================
-        let currentCardPayload = null;
-
-        function sendCardAndOpenShareModal(payload) {
-            currentCardPayload = payload;
-            const modal = document.getElementById('share-card-modal');
-            const badgeEl = document.getElementById('email-delivery-badge');
-            const cardTypeEl = document.getElementById('card-badge-type');
-            const cardHeadlineEl = document.getElementById('card-headline');
-            const cardBodyEl = document.getElementById('card-body-text');
-            const cardAuthorEl = document.getElementById('card-author-tag');
-            const mailtoBtn = document.getElementById('mailto-fallback-btn');
-
-            if (cardTypeEl) cardTypeEl.textContent = payload.type;
-            if (cardHeadlineEl) cardHeadlineEl.textContent = payload.headline;
-            if (cardBodyEl) cardBodyEl.textContent = payload.body;
-            if (cardAuthorEl) cardAuthorEl.textContent = `— ${payload.author}`;
-
-            const emailSubject = encodeURIComponent(`😍Best buddies forever🥳 | ${payload.type} from ${payload.author}`);
-            const emailBody = encodeURIComponent(
-                `😍Best buddies forever🥳 (4th Anniversary: 13/11/2022 - 13/11/2026)\n\n` +
-                `Card Type: ${payload.type}\n` +
-                `Title: ${payload.headline}\n` +
-                `Message: ${payload.body}\n` +
-                `Submitted By: ${payload.author}`
-            );
-            if (mailtoBtn) {
-                mailtoBtn.href = `mailto:mk9860490@gmail.com?subject=${emailSubject}&body=${emailBody}`;
-            }
-
-            if (modal) {
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-            }
-
-            if (badgeEl) {
-                badgeEl.textContent = '✉️ Sending card to mk9860490@gmail.com...';
-            }
-
-            fetch('https://formsubmit.co/ajax/mk9860490@gmail.com', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    _subject: `😍Best buddies forever🥳 - ${payload.type}`,
-                    _template: 'box',
-                    Group: '😍Best buddies forever🥳 (Est. 13/11/2022)',
-                    Card_Type: payload.type,
-                    Headline: payload.headline,
-                    Message: payload.body,
-                    From_Buddy: payload.author
-                })
-            })
-            .then(res => res.json())
-            .then(() => {
-                if (badgeEl) badgeEl.textContent = '✅ Sent to mk9860490@gmail.com!';
-            })
-            .catch(() => {
-                if (badgeEl) badgeEl.textContent = '✉️ Card Ready (Use Email Backup if offline)';
-            });
-        }
-
-        function closeShareModal() {
-            const modal = document.getElementById('share-card-modal');
-            if (modal) {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-            }
-        }
-
-        function renderCardToCanvas() {
-            const canvas = document.getElementById('card-export-canvas');
-            if (!canvas || !currentCardPayload) return null;
-            const ctx = canvas.getContext('2d');
-
-            const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            grad.addColorStop(0, '#1e1b4b');
-            grad.addColorStop(0.5, '#581c87');
-            grad.addColorStop(1, '#831843');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.strokeStyle = 'rgba(244, 114, 182, 0.55)';
-            ctx.lineWidth = 6;
-            ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
-
-            ctx.fillStyle = '#fde047';
-            ctx.font = 'bold 26px sans-serif';
-            ctx.fillText('😍 Best buddies forever 🥳  •  4TH ANNIVERSARY', 54, 78);
-
-            ctx.fillStyle = '#f9a8d4';
-            ctx.font = 'bold 22px sans-serif';
-            ctx.fillText(currentCardPayload.type, 54, 128);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 38px sans-serif';
-            ctx.fillText(currentCardPayload.headline.slice(0, 44), 54, 188);
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
-            ctx.fillRect(54, 218, canvas.width - 108, 210);
-
-            ctx.fillStyle = '#f8fafc';
-            ctx.font = '26px sans-serif';
-            const words = currentCardPayload.body.split(' ');
-            let line = '';
-            let y = 266;
-            for (let i = 0; i < words.length; i++) {
-                const testLine = line + words[i] + ' ';
-                if (ctx.measureText(testLine).width > canvas.width - 150 && i > 0) {
-                    ctx.fillText(line, 76, y);
-                    line = words[i] + ' ';
-                    y += 38;
-                    if (y > 400) break;
-                } else {
-                    line = testLine;
-                }
-            }
-            ctx.fillText(line, 76, y);
-
-            ctx.fillStyle = '#e2e8f0';
-            ctx.font = 'bold 22px sans-serif';
-            ctx.fillText(`— ${currentCardPayload.author}`, 54, 482);
-            ctx.fillText('13/11/2022 – 13/11/2026 • Fab 8 Squad', canvas.width - 430, 482);
-
-            return canvas;
-        }
-
-        function downloadCardAsImage() {
-            const canvas = renderCardToCanvas();
-            if (!canvas) return;
-            const link = document.createElement('a');
-            link.download = 'Best-Buddies-Forever-4th-Anniversary-Card.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            showToast('Card image downloaded! 🖼️', '✅');
-        }
-
-        function shareCardToWhatsApp() {
-            if (!currentCardPayload) return;
-            persistWishesLocally();
-            const liveSyncLink = window.location.href;
-            const shareText =
-                `*😍Best buddies forever🥳 — 4th Anniversary Card!*\n` +
-                `📅 _13/11/2022 – 13/11/2026 (Fab 8 Squad)_\n\n` +
-                `*${currentCardPayload.type}*\n` +
-                `*${currentCardPayload.headline}*\n` +
-                `"${currentCardPayload.body}"\n` +
-                `— *${currentCardPayload.author}*\n\n` +
-                `🎈 View all floating wishes & add yours here:\n${liveSyncLink}`;
-
-            const canvas = renderCardToCanvas();
-            if (canvas && navigator.canShare && navigator.share) {
-                canvas.toBlob(async (blob) => {
-                    try {
-                        const file = new File([blob], 'Best-Buddies-4th-Anniversary.png', { type: 'image/png' });
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                                title: '😍Best buddies forever🥳',
-                                text: shareText,
-                                files: [file]
-                            });
-                            return;
-                        }
-                    } catch (err) {}
-                    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
-                }, 'image/png');
-            } else {
-                window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
-            }
         }
 
         // Initialize all sections immediately on page load
         loadSavedWishesOnBoot().then(() => {
             renderFloatingWishes();
             fetchSharedCloudWishes();
+            startLiveSquadStream();
         });
         renderHotPotatoRing(-1, false);
         initMemoryGame();
