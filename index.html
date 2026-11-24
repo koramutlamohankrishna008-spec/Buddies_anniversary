@@ -1176,7 +1176,7 @@
                         🎈 Live Floating Wishes
                     </span>
                     <span id="cloud-sync-pill" class="inline-block px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold">
-                        🟢 Connecting WebSocket Mesh...
+                        🟢 Connecting Live Cloud...
                     </span>
                     <button type="button" onclick="fetchSharedCloudWishes(true)" class="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 text-[11px] font-bold transition cursor-pointer">
                         🔄 Sync Now
@@ -1924,38 +1924,44 @@
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
-        let mqttClient = null;
-        const MQTT_RETAINED_TOPIC = 'best_buddies_forever/fab8_2026_tirupati/wishes_state_v1';
+        let activeMqttClients = [];
+        let pendingMqttPublish = false;
+        const MQTT_RETAINED_TOPIC = 'best_buddies_forever/fab8_2026_tirupati/wishes_retained_v2';
         const deletedWishIds = new Set();
         const squadBroadcast = typeof BroadcastChannel !== 'undefined'
             ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
 
-        // Live MQTT-over-WebSocket Retained Cloud Sync (Instant across Chrome profiles, Edge, phones & file://)
+        // Dual-Broker MQTT-over-WebSocket Retained Cloud Sync (Connects simultaneously to EMQX & HiveMQ)
         function initMqttCloudMesh() {
             if (typeof mqtt === 'undefined') return;
             const brokers = [
                 'wss://broker.emqx.io:8084/mqtt',
                 'wss://broker.hivemq.com:8884/mqtt'
             ];
-            let brokerIdx = 0;
 
-            function connectBroker(url) {
+            brokers.forEach((url, idx) => {
                 try {
-                    const clientId = 'fab8_buddy_' + Math.random().toString(16).slice(2, 10);
+                    const clientId = `fab8_b${idx}_` + Math.random().toString(16).slice(2, 10);
                     const client = mqtt.connect(url, {
                         clientId,
+                        protocolVersion: 4,
                         clean: true,
-                        connectTimeout: 6000,
-                        reconnectPeriod: 4000
+                        keepalive: 30,
+                        connectTimeout: 8000,
+                        reconnectPeriod: 3000
                     });
-                    mqttClient = client;
+                    activeMqttClients.push(client);
 
                     client.on('connect', () => {
                         client.subscribe(MQTT_RETAINED_TOPIC, { qos: 1 }, () => {
                             const syncPill = document.getElementById('cloud-sync-pill');
                             if (syncPill) {
                                 syncPill.textContent = `🟢 Live Cloud Connected (${wishesData.length})`;
+                            }
+                            if (pendingMqttPublish) {
+                                pendingMqttPublish = false;
+                                publishRetainedWishesToMqtt();
                             }
                         });
                     });
@@ -1972,34 +1978,31 @@
                             }
                         }
                     });
-
-                    client.on('error', () => {
-                        if (brokerIdx + 1 < brokers.length) {
-                            brokerIdx++;
-                            try { client.end(true); } catch (e) {}
-                            connectBroker(brokers[brokerIdx]);
-                        }
-                    });
                 } catch (e) {}
-            }
-
-            connectBroker(brokers[0]);
+            });
         }
 
         function publishRetainedWishesToMqtt() {
-            if (!mqttClient || !mqttClient.connected) return false;
-            try {
-                const encoded = encodePacketBase64({
-                    action: 'snapshot',
-                    wishes: wishesData.slice(0, 25),
-                    deletedIds: Array.from(deletedWishIds).slice(-100),
-                    updatedAt: Date.now()
-                });
-                mqttClient.publish(MQTT_RETAINED_TOPIC, encoded, { qos: 1, retain: true });
-                return true;
-            } catch (e) {
+            const encoded = encodePacketBase64({
+                action: 'snapshot',
+                wishes: wishesData.slice(0, 25),
+                deletedIds: Array.from(deletedWishIds).slice(-100),
+                updatedAt: Date.now()
+            });
+            let publishedCount = 0;
+            activeMqttClients.forEach((client) => {
+                if (client && client.connected) {
+                    try {
+                        client.publish(MQTT_RETAINED_TOPIC, encoded, { qos: 1, retain: true });
+                        publishedCount++;
+                    } catch (e) {}
+                }
+            });
+            if (publishedCount === 0) {
+                pendingMqttPublish = true;
                 return false;
             }
+            return true;
         }
         function getCloudConfig() {
             try {
@@ -2494,17 +2497,23 @@
 
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
-            if (mqttClient && !mqttClient.connected) {
-                try { mqttClient.reconnect(); } catch (e) {}
-            }
+            let mqttConnectedCount = 0;
+            activeMqttClients.forEach((client) => {
+                if (!client) return;
+                if (client.connected) {
+                    mqttConnectedCount++;
+                    try { client.subscribe(MQTT_RETAINED_TOPIC, { qos: 1 }); } catch (e) {}
+                } else {
+                    try { client.reconnect(); } catch (e) {}
+                }
+            });
             try {
                 const [rDb, r1, r2] = await Promise.all([
                     pullFromCustomCloud(),
                     pullFromNtfyChannel(NTFY_TOPIC_URL),
                     pullFromNtfyChannel(NTFY_BACKUP_URL)
                 ]);
-                const mqttOk = Boolean(mqttClient && mqttClient.connected);
-                const anyOk = mqttOk || (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
+                const anyOk = mqttConnectedCount > 0 || (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
                 if (!anyOk) {
                     const code = (r1 && r1.status) || (r2 && r2.status) || 'Blocked';
                     throw new Error(`HTTP ${code}`);
@@ -2518,7 +2527,7 @@
                 }
             } catch (e) {
                 if (syncPill) {
-                    syncPill.textContent = (mqttClient && mqttClient.connected)
+                    syncPill.textContent = mqttConnectedCount > 0
                         ? `🟢 Live Cloud Synced (${wishesData.length})`
                         : `🟡 Local — Tap ☁️ Backup or 📋 Code`;
                 }
@@ -2527,7 +2536,6 @@
                 }
             }
         }
-
         function startLiveSquadStream() {
             if (typeof EventSource === 'undefined') return;
             try {
