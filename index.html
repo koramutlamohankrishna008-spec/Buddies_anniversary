@@ -2366,11 +2366,17 @@
         }
 
         async function pullFromNtfyChannel(url) {
-            // Note: ntfy.sh requires since=12h with poll=1 (bare poll=1 defaults to since=latest and returns 0 messages!)
-            const res = await fetch(`${url}/json?poll=1&since=12h&_t=${Date.now()}`, {
+            // Try since=all first, then fallback to since=12h so both self-hosted and public ntfy servers return history
+            let res = await fetch(`${url}/json?poll=1&since=all&_t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
+            if (!res.ok) {
+                res = await fetch(`${url}/json?poll=1&since=12h&_t=${Date.now()}`, {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+            }
             if (!res.ok) return { ok: false, status: res.status };
             const text = await res.text();
             const lines = text.split('\n').filter(Boolean);
@@ -2438,7 +2444,7 @@
             if (typeof EventSource === 'undefined') return;
             try {
                 if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=12h`);
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
                 sseConnection.onmessage = function(ev) {
                     if (!ev || !ev.data) return;
                     const payload = parseNtfyPayloadLine(ev.data);
