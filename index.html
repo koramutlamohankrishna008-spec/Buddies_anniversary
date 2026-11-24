@@ -2018,12 +2018,12 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v21';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v21';
-        const CUSTOM_RTDB_KEY = 'bbf_fab8_custom_rtdb_url_v21';
-        // Built-in CORS-enabled public cloud endpoints so every device & Chrome profile syncs automatically
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_4th_anniversary_wishes_2026';
-        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_4th_anniversary_backup_2026';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v22';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v22';
+        const CUSTOM_RTDB_KEY = 'bbf_fab8_custom_rtdb_url_v22';
+        // Built-in CORS-enabled public cloud channels (using URL-safe Base64 payloads so ntfy.sh never mangles JSON)
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_live_2026_v22';
+        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_mirror_2026_v22';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
@@ -2031,6 +2031,33 @@
         const squadBroadcast = typeof BroadcastChannel !== 'undefined'
             ? new BroadcastChannel('bbf_fab8_wishes_sync_channel')
             : null;
+
+        function encodePacketBase64(obj) {
+            try {
+                const jsonStr = JSON.stringify(obj);
+                const bytes = new TextEncoder().encode(jsonStr);
+                let bin = '';
+                bytes.forEach(b => { bin += String.fromCharCode(b); });
+                return 'BBF1:' + btoa(bin);
+            } catch (e) {
+                return JSON.stringify(obj);
+            }
+        }
+
+        function decodePacketBase64(rawStr) {
+            try {
+                const s = String(rawStr || '').trim();
+                if (s.startsWith('BBF1:')) {
+                    const bin = atob(s.slice(5));
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    return JSON.parse(new TextDecoder().decode(bytes));
+                }
+                return JSON.parse(s);
+            } catch (e) {
+                return null;
+            }
+        }
 
         function makeWishKey(author, text) {
             return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
@@ -2305,11 +2332,11 @@
                 const outer = JSON.parse(line);
                 if (outer && outer.event && outer.event !== 'message') return null;
                 if (outer && typeof outer.message === 'string') {
-                    return JSON.parse(outer.message);
+                    return decodePacketBase64(outer.message);
                 }
                 return outer;
             } catch (e) {
-                return null;
+                return decodePacketBase64(line);
             }
         }
 
@@ -2339,28 +2366,28 @@
         }
 
         async function pullFromNtfyChannel(url) {
-            const res = await fetch(`${url}/json?poll=1&since=12h&_t=${Date.now()}`, {
+            const res = await fetch(`${url}/json?poll=1&since=24h&_t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
-            if (!res.ok) return false;
+            if (!res.ok) return { ok: false, status: res.status };
             const text = await res.text();
             const lines = text.split('\n').filter(Boolean);
             lines.forEach(line => {
                 const payload = parseNtfyPayloadLine(line);
                 handleIncomingCloudPacket(payload);
             });
-            return true;
+            return { ok: true, status: res.status };
         }
 
         async function pullFromCustomRtdb() {
             const base = getActiveRtdbBaseUrl();
-            if (!base) return false;
+            if (!base) return { ok: false, status: 0 };
             try {
                 const res = await fetch(`${base}/fab8_wishes.json?_t=${Date.now()}`, { cache: 'no-store' });
-                if (!res.ok) return false;
+                if (!res.ok) return { ok: false, status: res.status };
                 const data = await res.json();
-                if (!data) return true;
+                if (!data) return { ok: true, status: res.status };
                 if (Array.isArray(data.deletedIds)) {
                     data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
                     persistDeletedIdsLocally();
@@ -2370,35 +2397,38 @@
                     persistWishesLocally();
                     renderFloatingWishes();
                 }
-                return true;
+                return { ok: true, status: res.status };
             } catch (e) {
-                return false;
+                return { ok: false, status: 0 };
             }
         }
 
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
-                const results = await Promise.allSettled([
+                const [rDb, r1, r2] = await Promise.all([
                     pullFromCustomRtdb(),
                     pullFromNtfyChannel(NTFY_TOPIC_URL),
                     pullFromNtfyChannel(NTFY_BACKUP_URL)
                 ]);
-                const anyOk = results.some(r => r.status === 'fulfilled' && r.value === true);
-                if (!anyOk) throw new Error('All cloud channels unreachable');
+                const anyOk = (rDb && rDb.ok) || (r1 && r1.ok) || (r2 && r2.ok);
+                if (!anyOk) {
+                    const code = (r1 && r1.status) || (r2 && r2.status) || 'Blocked';
+                    throw new Error(`HTTP ${code}`);
+                }
 
                 if (syncPill) {
-                    syncPill.textContent = `🟢 All-Device Cloud Synced (${wishesData.length})`;
+                    syncPill.textContent = `🟢 Cloud Synced (${wishesData.length})`;
                 }
                 if (manualNotify) {
                     showToast(`Synced across devices! ${wishesData.length} floating wish(es) 🔄`, '🎈');
                 }
             } catch (e) {
                 if (syncPill) {
-                    syncPill.textContent = `🟡 Saved Locally (${wishesData.length}) — Use Copy Sync Link`;
+                    syncPill.textContent = `🟡 Local Only (${e.message}) — Use Copy Sync Link`;
                 }
                 if (manualNotify) {
-                    showToast('Network blocked cloud — tap Copy Sync Link 🔗 to share wishes', '⚠️');
+                    showToast(`Cloud sync error (${e.message}) — tap Copy Sync Link 🔗`, '⚠️');
                 }
             }
         }
@@ -2407,7 +2437,7 @@
             if (typeof EventSource === 'undefined') return;
             try {
                 if (sseConnection) sseConnection.close();
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=12h`);
+                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=24h`);
                 sseConnection.onmessage = function(ev) {
                     if (!ev || !ev.data) return;
                     const payload = parseNtfyPayloadLine(ev.data);
@@ -2441,10 +2471,10 @@
                     });
                 } catch (e) {}
             }
-            const bodyStr = JSON.stringify(snapshotPayload);
+            const encodedSnap = encodePacketBase64(snapshotPayload);
             await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 2),
-                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 2)
+                pushWithRetry(NTFY_TOPIC_URL, encodedSnap, 2),
+                pushWithRetry(NTFY_BACKUP_URL, encodedSnap, 2)
             ]);
         }
 
@@ -2482,17 +2512,17 @@
                 await window.saveWishToLiveCloud(addPayload);
             }
 
-            const addStr = JSON.stringify(addPayload);
+            const addEncoded = encodePacketBase64(addPayload);
             const [ok1, ok2] = await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, addStr, 3),
-                pushWithRetry(NTFY_BACKUP_URL, addStr, 3)
+                pushWithRetry(NTFY_TOPIC_URL, addEncoded, 3),
+                pushWithRetry(NTFY_BACKUP_URL, addEncoded, 3)
             ]);
             await pushAllWishesSnapshot();
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
                 syncPill.textContent = (ok1 || ok2 || getActiveRtdbBaseUrl())
-                    ? `🟢 All-Device Cloud Synced (${wishesData.length})`
+                    ? `🟢 Cloud Synced (${wishesData.length})`
                     : `🟡 Saved Locally — Tap Copy Sync Link`;
             }
         }
@@ -2515,10 +2545,10 @@
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
-            const delStr = JSON.stringify(delPayload);
+            const delEncoded = encodePacketBase64(delPayload);
             await Promise.all([
-                pushWithRetry(NTFY_TOPIC_URL, delStr, 3),
-                pushWithRetry(NTFY_BACKUP_URL, delStr, 3),
+                pushWithRetry(NTFY_TOPIC_URL, delEncoded, 3),
+                pushWithRetry(NTFY_BACKUP_URL, delEncoded, 3),
                 pushAllWishesSnapshot()
             ]);
         }
