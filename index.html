@@ -2059,9 +2059,9 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v5';
-        // Fixed deterministic cross-profile & cross-browser shared cloud store (same URL in every Chrome profile!)
-        const FIXED_SHARED_CLOUD_URL = 'https://kvdb.io/Dr9xP4mK7wQ2vL8nB5zT1y/best_buddies_forever_fab8_wishes';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v6';
+        // CORS-enabled cross-profile & cross-device cloud stream (works from file://, localhost, GitHub Pages, Vercel & all Chrome profiles!)
+        const NTFY_TOPIC_URL = 'https://ntfy.sh/best_buddies_forever_fab8_2026_wishes';
         let wishesData = [];
         let floatingVisible = true;
 
@@ -2184,25 +2184,46 @@
         async function fetchSharedCloudWishes() {
             const syncPill = document.getElementById('cloud-sync-pill');
             try {
-                const res = await fetch(`${FIXED_SHARED_CLOUD_URL}?t=${Date.now()}`, {
+                // Poll all cached messages from the CORS-enabled ntfy topic across all Chrome profiles & devices
+                const res = await fetch(`${NTFY_TOPIC_URL}/json?poll=1&since=all`, {
                     method: 'GET',
                     cache: 'no-store'
                 });
                 if (res.ok) {
-                    const text = await res.text();
-                    if (text) {
-                        const data = JSON.parse(text);
-                        const remoteWishes = Array.isArray(data) ? data : (Array.isArray(data.wishes) ? data.wishes : []);
-                        if (remoteWishes.length > 0) {
-                            wishesData = mergeWishesLists(remoteWishes, wishesData);
-                            persistWishesLocally();
-                            renderFloatingWishes();
-                        }
-                        if (syncPill) syncPill.textContent = '🟢 All Profiles & Devices Synced';
-                    }
+                    const rawLines = await res.text();
+                    const lines = rawLines.split('\n').filter(Boolean);
+                    const cloudEvents = [];
+                    const deletedIds = new Set();
+
+                    lines.forEach(line => {
+                        try {
+                            const evt = JSON.parse(line);
+                            if (evt && evt.event === 'message' && evt.message) {
+                                const payload = JSON.parse(evt.message);
+                                if (payload && payload.action === 'delete' && payload.key) {
+                                    deletedIds.add(payload.key);
+                                } else if (payload && payload.author && payload.text) {
+                                    cloudEvents.push(payload);
+                                }
+                            }
+                        } catch (err) {}
+                    });
+
+                    const activeCloudWishes = cloudEvents.filter(item => {
+                        const key = `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
+                        return !deletedIds.has(key);
+                    });
+
+                    wishesData = mergeWishesLists(activeCloudWishes, wishesData).filter(item => {
+                        const key = `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
+                        return !deletedIds.has(key);
+                    });
+
+                    persistWishesLocally();
+                    renderFloatingWishes();
+                    if (syncPill) syncPill.textContent = '🟢 Live Across All Chrome Profiles & Devices';
                 }
             } catch (e) {}
-            renderFloatingWishes();
         }
 
         async function pushSharedCloudWishes(latestWish) {
@@ -2211,30 +2232,25 @@
                 await window.saveWishToLiveCloud(latestWish);
             }
             const syncPill = document.getElementById('cloud-sync-pill');
+            if (!latestWish) return;
             try {
-                let remoteList = [];
-                const getRes = await fetch(`${FIXED_SHARED_CLOUD_URL}?t=${Date.now()}`, {
-                    method: 'GET',
-                    cache: 'no-store'
-                });
-                if (getRes.ok) {
-                    const text = await getRes.text();
-                    if (text) {
-                        const data = JSON.parse(text);
-                        remoteList = Array.isArray(data) ? data : (Array.isArray(data.wishes) ? data.wishes : []);
-                    }
-                }
-                const combined = mergeWishesLists(wishesData, remoteList);
-                wishesData = combined;
-                persistWishesLocally();
-                renderFloatingWishes();
-
-                const putRes = await fetch(FIXED_SHARED_CLOUD_URL, {
+                const res = await fetch(NTFY_TOPIC_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ wishes: combined })
+                    headers: {
+                        'Title': 'Best Buddies Forever Wish',
+                        'Tags': 'balloon'
+                    },
+                    body: JSON.stringify({
+                        action: 'add',
+                        id: latestWish.id,
+                        author: latestWish.author,
+                        text: latestWish.text,
+                        date: latestWish.date || '13/11/2026',
+                        createdAt: latestWish.createdAt || Date.now()
+                    })
                 });
-                if (putRes.ok && syncPill) {
-                    syncPill.textContent = '🟢 All Profiles & Devices Synced';
+                if (res.ok && syncPill) {
+                    syncPill.textContent = '🟢 Live Across All Chrome Profiles & Devices';
                 }
             } catch (e) {}
         }
@@ -2321,9 +2337,13 @@
                 await window.deleteWishFromLiveCloud(removed.cloudDocId);
             }
             try {
-                await fetch(FIXED_SHARED_CLOUD_URL, {
+                const delKey = `${removed.author.trim().toLowerCase()}::${removed.text.trim().toLowerCase()}`;
+                await fetch(NTFY_TOPIC_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ wishes: wishesData })
+                    body: JSON.stringify({
+                        action: 'delete',
+                        key: delKey
+                    })
                 });
             } catch (e) {}
         }
