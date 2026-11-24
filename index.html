@@ -2059,27 +2059,11 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v4';
-        const CLOUD_BUCKET_KEY_STORAGE = 'bbf_fab8_cloud_bin_id_v1';
-        const DEFAULT_JSONBLOB_URL = 'https://jsonblob.com/api/jsonBlob/019ab4e2-7c3d-7f10-8a2b-9e4f1c2d3e4f';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v5';
+        // Fixed deterministic cross-profile & cross-browser shared cloud store (same URL in every Chrome profile!)
+        const FIXED_SHARED_CLOUD_URL = 'https://kvdb.io/Dr9xP4mK7wQ2vL8nB5zT1y/best_buddies_forever_fab8_wishes';
         let wishesData = [];
         let floatingVisible = true;
-
-        function getActiveCloudSyncUrl() {
-            try {
-                const params = new URLSearchParams(window.location.search);
-                const urlBin = params.get('bin');
-                if (urlBin && /^https:\/\/jsonblob\.com\/api\/jsonBlob\/[a-zA-Z0-9-]+$/.test(urlBin)) {
-                    window.localStorage.setItem(CLOUD_BUCKET_KEY_STORAGE, urlBin);
-                    return urlBin;
-                }
-                const savedBin = window.localStorage.getItem(CLOUD_BUCKET_KEY_STORAGE);
-                if (savedBin && /^https:\/\/jsonblob\.com\/api\/jsonBlob\/[a-zA-Z0-9-]+$/.test(savedBin)) {
-                    return savedBin;
-                }
-            } catch (e) {}
-            return DEFAULT_JSONBLOB_URL;
-        }
 
         function loadSavedWishesOnBoot() {
             let loaded = [];
@@ -2091,7 +2075,7 @@
                 }
             } catch (e) {}
 
-            // Also check URL query (?wishes=...) so shared links carry wishes across browsers & devices
+            // Also merge any wishes passed via URL query (?wishes=...)
             try {
                 const params = new URLSearchParams(window.location.search);
                 const encoded = params.get('wishes');
@@ -2112,13 +2096,8 @@
                 window.localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(wishesData));
             } catch (e) {}
 
-            // Keep URL query parameter updated silently so copying/refreshing URL preserves wishes
             try {
                 const url = new URL(window.location.href);
-                const activeBin = getActiveCloudSyncUrl();
-                if (activeBin !== DEFAULT_JSONBLOB_URL) {
-                    url.searchParams.set('bin', activeBin);
-                }
                 if (wishesData.length > 0) {
                     const compact = wishesData.slice(0, 12).map(w => ({
                         id: w.id,
@@ -2144,7 +2123,7 @@
             tempInput.select();
             document.execCommand('copy');
             document.body.removeChild(tempInput);
-            showToast('Copied Live Link with all floating wishes! Open in any browser 🔗', '🎈');
+            showToast('Copied Live Link with all floating wishes! Open in any profile/browser 🔗', '🎈');
         }
 
         const floatingColors = [
@@ -2204,20 +2183,22 @@
 
         async function fetchSharedCloudWishes() {
             const syncPill = document.getElementById('cloud-sync-pill');
-            const targetUrl = getActiveCloudSyncUrl();
             try {
-                const res = await fetch(targetUrl, {
+                const res = await fetch(`${FIXED_SHARED_CLOUD_URL}?t=${Date.now()}`, {
                     method: 'GET',
-                    headers: { 'Accept': 'application/json' },
                     cache: 'no-store'
                 });
                 if (res.ok) {
-                    const data = await res.json();
-                    if (data && Array.isArray(data.wishes)) {
-                        wishesData = mergeWishesLists(data.wishes, wishesData);
-                        persistWishesLocally();
-                        renderFloatingWishes();
-                        if (syncPill) syncPill.textContent = '🟢 Cross-Browser Cloud Synced';
+                    const text = await res.text();
+                    if (text) {
+                        const data = JSON.parse(text);
+                        const remoteWishes = Array.isArray(data) ? data : (Array.isArray(data.wishes) ? data.wishes : []);
+                        if (remoteWishes.length > 0) {
+                            wishesData = mergeWishesLists(remoteWishes, wishesData);
+                            persistWishesLocally();
+                            renderFloatingWishes();
+                        }
+                        if (syncPill) syncPill.textContent = '🟢 All Profiles & Devices Synced';
                     }
                 }
             } catch (e) {}
@@ -2230,48 +2211,31 @@
                 await window.saveWishToLiveCloud(latestWish);
             }
             const syncPill = document.getElementById('cloud-sync-pill');
-            let targetUrl = getActiveCloudSyncUrl();
             try {
                 let remoteList = [];
-                const getRes = await fetch(targetUrl, {
+                const getRes = await fetch(`${FIXED_SHARED_CLOUD_URL}?t=${Date.now()}`, {
                     method: 'GET',
-                    headers: { 'Accept': 'application/json' },
                     cache: 'no-store'
                 });
                 if (getRes.ok) {
-                    const data = await getRes.json();
-                    if (data && Array.isArray(data.wishes)) remoteList = data.wishes;
-                    const combined = mergeWishesLists(wishesData, remoteList);
-                    wishesData = combined;
-                    persistWishesLocally();
-                    await fetch(targetUrl, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({ wishes: combined })
-                    });
-                } else {
-                    // Auto-provision a live cross-browser JSONBlob if default bin isn't created yet
-                    const createRes = await fetch('https://jsonblob.com/api/jsonBlob', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({ wishes: wishesData })
-                    });
-                    const locationHeader = createRes.headers.get('Location') || createRes.headers.get('X-jsonblob');
-                    if (locationHeader) {
-                        const newBinUrl = locationHeader.startsWith('http')
-                            ? locationHeader
-                            : `https://jsonblob.com/api/jsonBlob/${locationHeader}`;
-                        window.localStorage.setItem(CLOUD_BUCKET_KEY_STORAGE, newBinUrl);
-                        persistWishesLocally();
+                    const text = await getRes.text();
+                    if (text) {
+                        const data = JSON.parse(text);
+                        remoteList = Array.isArray(data) ? data : (Array.isArray(data.wishes) ? data.wishes : []);
                     }
                 }
-                if (syncPill) syncPill.textContent = '🟢 Cross-Browser Cloud Synced';
+                const combined = mergeWishesLists(wishesData, remoteList);
+                wishesData = combined;
+                persistWishesLocally();
+                renderFloatingWishes();
+
+                const putRes = await fetch(FIXED_SHARED_CLOUD_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ wishes: combined })
+                });
+                if (putRes.ok && syncPill) {
+                    syncPill.textContent = '🟢 All Profiles & Devices Synced';
+                }
             } catch (e) {}
         }
 
@@ -2357,9 +2321,8 @@
                 await window.deleteWishFromLiveCloud(removed.cloudDocId);
             }
             try {
-                await fetch(getActiveCloudSyncUrl(), {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                await fetch(FIXED_SHARED_CLOUD_URL, {
+                    method: 'POST',
                     body: JSON.stringify({ wishes: wishesData })
                 });
             } catch (e) {}
@@ -2371,7 +2334,8 @@
             showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '✨');
         }
 
-        // Poll every 12 seconds so wishes posted by other buddies on their phones appear automatically
+        // Poll every 6 seconds so wishes posted in another Chrome profile or phone appear automatically
+        setInterval(fetchSharedCloudWishes, 6000);
         setInterval(fetchSharedCloudWishes, 12000);
 
         const wishForm = document.getElementById('wish-form');
