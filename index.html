@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en" class="scroll-smooth dark">
 <head>
     <meta charset="UTF-8">
@@ -1600,6 +1600,7 @@
         async function initLiveSquadCloudSync() {
             const syncPill = document.getElementById('cloud-sync-pill');
             if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                if (syncPill) syncPill.textContent = '🟢 Auto-Saved & Link Sync Ready';
                 return;
             }
             try {
@@ -1644,11 +1645,10 @@
                     if (syncPill) {
                         syncPill.textContent = '🟢 Live Multi-Device Sync Active';
                     }
-                }, (err) => {
-                    if (syncPill) syncPill.textContent = '🟡 Saved on Device';
+                }, () => {
+                    if (syncPill) syncPill.textContent = '🟢 Auto-Saved & Link Sync Ready';
                 });
 
-                // Expose add/delete handlers to main script
                 window.saveWishToLiveCloud = async function(wishObj) {
                     if (!auth.currentUser) return;
                     try {
@@ -1669,7 +1669,7 @@
                     } catch (e) {}
                 };
             } catch (err) {
-                if (syncPill) syncPill.textContent = '🟡 Saved on Device';
+                if (syncPill) syncPill.textContent = '🟢 Auto-Saved & Link Sync Ready';
             }
         }
 
@@ -2054,8 +2054,60 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v4';
+        const SHARED_CLOUD_JSON_URL = 'https://jsonblob.com/api/jsonBlob/1306338492089147392';
         let wishesData = [];
         let floatingVisible = true;
+
+        function loadSavedWishesOnBoot() {
+            let loaded = [];
+            try {
+                const raw = window.localStorage.getItem(WISHES_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) loaded = parsed;
+                }
+            } catch (e) {}
+
+            // Also check URL hash/query (?wishes=...) so shared links carry wishes across devices
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const encoded = params.get('wishes');
+                if (encoded) {
+                    const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+                    if (Array.isArray(decoded)) {
+                        loaded = mergeWishesLists(loaded, decoded);
+                    }
+                }
+            } catch (e) {}
+
+            wishesData = loaded;
+            persistWishesLocally();
+        }
+
+        function persistWishesLocally() {
+            try {
+                window.localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(wishesData));
+            } catch (e) {}
+
+            // Keep URL query parameter updated silently so copying/refreshing URL preserves wishes
+            try {
+                const url = new URL(window.location.href);
+                if (wishesData.length > 0) {
+                    const compact = wishesData.slice(0, 12).map(w => ({
+                        id: w.id,
+                        author: w.author,
+                        text: w.text,
+                        date: w.date || '13/11/2026'
+                    }));
+                    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
+                    url.searchParams.set('wishes', encoded);
+                } else {
+                    url.searchParams.delete('wishes');
+                }
+                window.history.replaceState({}, '', url.toString());
+            } catch (e) {}
+        }
 
         const floatingColors = [
             'from-pink-600/90 to-rose-700/90 border-pink-300/40',
@@ -2080,6 +2132,171 @@
             return String(str || '').replace(/[&<>"']/g, m => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
             }[m]));
+        }
+
+        function mergeWishesLists(listA, listB) {
+            const merged = [];
+            const seen = new Set();
+            [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
+                if (!item || !item.author || !item.text) return;
+                const key = `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    merged.push({
+                        cloudDocId: item.cloudDocId || null,
+                        id: item.id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        author: item.author.trim(),
+                        text: item.text.trim(),
+                        date: item.date || '13/11/2026',
+                        createdAt: item.createdAt || 0
+                    });
+                } else if (item.cloudDocId) {
+                    const existing = merged.find(m => `${m.author.toLowerCase()}::${m.text.toLowerCase()}` === key);
+                    if (existing && !existing.cloudDocId) existing.cloudDocId = item.cloudDocId;
+                }
+            });
+            return merged;
+        }
+
+        window.syncCloudWishesFromRealtime = function(cloudItems) {
+            wishesData = mergeWishesLists(cloudItems, wishesData);
+            persistWishesLocally();
+            renderFloatingWishes();
+        };
+
+        async function fetchSharedCloudWishes() {
+            try {
+                const res = await fetch(SHARED_CLOUD_JSON_URL, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data.wishes)) {
+                        wishesData = mergeWishesLists(data.wishes, wishesData);
+                        persistWishesLocally();
+                        renderFloatingWishes();
+                    }
+                }
+            } catch (e) {}
+            renderFloatingWishes();
+        }
+
+        async function pushSharedCloudWishes(latestWish) {
+            persistWishesLocally();
+            if (latestWish && typeof window.saveWishToLiveCloud === 'function') {
+                await window.saveWishToLiveCloud(latestWish);
+            }
+            try {
+                const res = await fetch(SHARED_CLOUD_JSON_URL, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                let remoteList = [];
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data.wishes)) remoteList = data.wishes;
+                }
+                const combined = mergeWishesLists(wishesData, remoteList);
+                await fetch(SHARED_CLOUD_JSON_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ wishes: combined })
+                });
+            } catch (e) {}
+        }
+
+        function renderFloatingWishes() {
+            const layer = document.getElementById('floating-wishes-layer');
+            const list = document.getElementById('wishes-list');
+            const countLabel = document.getElementById('floating-wish-count-label');
+            const boardCounter = document.getElementById('wishes-board-counter');
+
+            if (countLabel) {
+                countLabel.textContent = floatingVisible
+                    ? `Floating Wishes (${wishesData.length})`
+                    : `Show Wishes (${wishesData.length})`;
+            }
+            if (boardCounter) {
+                boardCounter.textContent = `${wishesData.length} / 8 Buddies Floated`;
+            }
+
+            if (layer) {
+                layer.innerHTML = '';
+                if (floatingVisible && wishesData.length > 0) {
+                    wishesData.forEach((wish, idx) => {
+                        const pos = floatingPositions[idx % floatingPositions.length];
+                        const colorClass = floatingColors[idx % floatingColors.length];
+                        const bubble = document.createElement('div');
+                        bubble.className = `floating-wish-bubble fixed max-w-[230px] sm:max-w-[260px] p-3.5 rounded-2xl bg-gradient-to-br ${colorClass} border backdrop-blur-md text-white shadow-2xl cursor-pointer`;
+                        if (pos.top) bubble.style.top = pos.top;
+                        if (pos.left) bubble.style.left = pos.left;
+                        if (pos.right) bubble.style.right = pos.right;
+                        bubble.style.setProperty('--drift-dur', `${6.5 + (idx % 4) * 1.1}s`);
+                        bubble.style.setProperty('--drift-delay', `${idx * 0.45}s`);
+                        bubble.title = 'Tap to celebrate this wish!';
+                        bubble.onclick = () => {
+                            triggerConfettiBurst(0.5, 0.45);
+                            showToast(`Celebrating ${wish.author}'s wish! 🥳`, '🎈');
+                        };
+                        bubble.innerHTML = `
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <span class="text-[11px] font-extrabold text-amber-200 truncate">🎈 ${escapeHTML(wish.author)}</span>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <span class="text-[10px] text-white/75">${escapeHTML(wish.date || 'Today')}</span>
+                                    <button type="button" onclick="event.stopPropagation(); deleteFloatingWish(${idx})" title="Delete floating wish" aria-label="Delete floating wish" class="w-5 h-5 rounded-full bg-black/35 hover:bg-rose-500 text-white/90 hover:text-white text-[10px] font-bold flex items-center justify-center transition cursor-pointer">✕</button>
+                                </div>
+                            </div>
+                            <p class="text-xs leading-snug text-white/95 line-clamp-3">"${escapeHTML(wish.text)}"</p>
+                        `;
+                        layer.appendChild(bubble);
+                    });
+                }
+            }
+
+            if (list) {
+                if (wishesData.length === 0) {
+                    list.innerHTML = `
+                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
+                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
+                        </div>
+                    `;
+                } else {
+                    list.innerHTML = wishesData.map((w, idx) => `
+                        <div class="p-3.5 rounded-2xl bg-white/5 border border-pink-400/25 flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="text-xs font-extrabold text-pink-300 mb-0.5">🎈 ${escapeHTML(w.author)}</div>
+                                <p class="text-xs text-slate-200 leading-relaxed break-words">"${escapeHTML(w.text)}"</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <span class="text-[10px] text-slate-400">${escapeHTML(w.date || 'Today')}</span>
+                                <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete wish" aria-label="Delete wish" class="w-6 h-6 rounded-full bg-white/10 hover:bg-rose-500/80 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center transition cursor-pointer">✕</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+
+        async function deleteFloatingWish(index) {
+            if (index < 0 || index >= wishesData.length) return;
+            const removed = wishesData.splice(index, 1)[0];
+            persistWishesLocally();
+            renderFloatingWishes();
+            showToast(`Deleted ${removed.author}'s wish 🗑️`, '🗑️');
+            if (removed.cloudDocId && typeof window.deleteWishFromLiveCloud === 'function') {
+                await window.deleteWishFromLiveCloud(removed.cloudDocId);
+            }
+            try {
+                await fetch(SHARED_CLOUD_JSON_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ wishes: wishesData })
+                });
+            } catch (e) {}
         }
 
         function mergeWishesLists(listA, listB) {
@@ -2926,6 +3143,7 @@
         }
 
         // Initialize all sections immediately on page load
+        loadSavedWishesOnBoot();
         renderFloatingWishes();
         fetchSharedCloudWishes();
         renderHotPotatoRing(-1, false);
