@@ -2079,11 +2079,12 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v15';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v15';
-        // Dedicated CORS-enabled public pub/sub channels (no API keys required, works across all browsers & phones)
-        const NTFY_CHANNEL_A = 'https://ntfy.sh/fab8_anniversary_wishes_live_2026_v1';
-        const NTFY_CHANNEL_B = 'https://ntfy.sh/fab8_anniversary_wishes_mirror_2026_v1';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v16';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v16';
+        // Multi-provider CORS-enabled endpoints (works across Chrome profiles, Live Server, GitHub Pages & mobile phones)
+        const NTFY_CHANNEL_A = 'https://ntfy.sh/bbf_fab8_4th_anniv_live_stream_9860490';
+        const NTFY_CHANNEL_B = 'https://ntfy.sh/bbf_fab8_4th_anniv_snapshot_9860490';
+        const JSONBLOB_MIRROR_URL = 'https://jsonblob.com/api/jsonBlob/0195a8c4-7f2e-7b1a-9c3d-4e5f6a7b8c9d';
         let wishesData = [];
         let floatingVisible = true;
         let sseConnectionA = null;
@@ -2091,119 +2092,61 @@
 
         const deletedWishIds = new Set();
         const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
-            ? new BroadcastChannel('bbf_fab8_squad_channel_v15')
+            ? new BroadcastChannel('bbf_fab8_squad_channel_v16')
             : null;
-
-        function makeWishKey(author, text) {
-            return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
-        }
-
-        function persistDeletedIdsLocally() {
-            const arr = Array.from(deletedWishIds).slice(-120);
-            try { localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
-            try { sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
-        }
-
-        function persistWishesLocally() {
-            const clean = wishesData.slice(0, 30).map(w => ({
-                id: w.id,
-                author: w.author,
-                text: w.text,
-                date: w.date || '13/11/2026',
-                createdAt: w.createdAt || Date.now()
-            }));
-            const serialized = JSON.stringify(clean);
-            try { localStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
-            try { sessionStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
-            try {
-                const encoded = btoa(unescape(encodeURIComponent(serialized)));
-                if (encoded.length < 4000) {
-                    window.location.hash = `wishes=${encoded}`;
-                }
-            } catch (e) {}
-        }
-
-        function mergeWishesLists(listA, listB) {
-            const map = new Map();
-            [...(listA || []), ...(listB || [])].forEach(item => {
-                if (!item || !item.author || !item.text) return;
-                const id = String(item.id || makeWishKey(item.author, item.text));
-                if (deletedWishIds.has(id)) return;
-                if (!map.has(id)) {
-                    map.set(id, {
-                        cloudDocId: item.cloudDocId || '',
-                        id,
-                        author: String(item.author).trim(),
-                        text: String(item.text).trim(),
-                        date: item.date || '13/11/2026',
-                        createdAt: item.createdAt || Date.now()
-                    });
-                }
-            });
-            return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
-        }
-
-        async function loadSavedWishesOnBoot() {
-            try {
-                const rawDel = localStorage.getItem(DELETED_IDS_STORAGE_KEY) || sessionStorage.getItem(DELETED_IDS_STORAGE_KEY);
-                if (rawDel) {
-                    const parsedDel = JSON.parse(rawDel);
-                    if (Array.isArray(parsedDel)) parsedDel.forEach(id => deletedWishIds.add(String(id)));
-                }
-            } catch (e) {}
-
-            let restored = [];
-            try {
-                const rawLocal = localStorage.getItem(WISHES_STORAGE_KEY) || sessionStorage.getItem(WISHES_STORAGE_KEY);
-                if (rawLocal) {
-                    const parsed = JSON.parse(rawLocal);
-                    if (Array.isArray(parsed)) restored = mergeWishesLists(restored, parsed);
-                }
-            } catch (e) {}
-
-            try {
-                const hash = window.location.hash || '';
-                const match = hash.match(/wishes=([A-Za-z0-9+/=]+)/);
-                if (match && match[1]) {
-                    const decoded = decodeURIComponent(escape(atob(match[1])));
-                    const parsedHash = JSON.parse(decoded);
-                    if (Array.isArray(parsedHash)) restored = mergeWishesLists(restored, parsedHash);
-                }
-            } catch (e) {}
-
-            wishesData = restored;
-            return wishesData;
-        }
-
-        window.registerRemoteDeletedWish = function(wishId, delKey, deletedAt) {
-            if (wishId) deletedWishIds.add(String(wishId));
-            persistDeletedIdsLocally();
-            const before = wishesData.length;
-            wishesData = wishesData.filter(w => {
-                if (wishId && String(w.id) === String(wishId)) return false;
-                if (delKey && makeWishKey(w.author, w.text) === delKey && (!deletedAt || (w.createdAt || 0) <= deletedAt)) return false;
-                return true;
-            });
-            if (wishesData.length !== before) {
-                persistWishesLocally();
-                renderFloatingWishes();
-            }
-        };
-
-        window.syncCloudWishesFromRealtime = function(cloudItems) {
-            const filtered = (cloudItems || []).filter(w => !deletedWishIds.has(String(w.id)));
-            wishesData = mergeWishesLists(filtered, wishesData);
-            persistWishesLocally();
-            renderFloatingWishes();
-        };
-
+// ... existing code ... -->
         function parseNtfyPayloadLine(line) {
             try {
                 const envelope = JSON.parse(line);
-                if (!envelope || !envelope.message) return null;
+                if (!envelope || envelope.event !== 'message' || !envelope.message) return null;
                 return JSON.parse(envelope.message);
             } catch (e) {
                 return null;
+            }
+        }
+
+        async function pullFromJsonBlobMirror() {
+            try {
+                const res = await fetch(`${JSONBLOB_MIRROR_URL}?_t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store'
+                });
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (data && Array.isArray(data.deletedIds)) {
+                    data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                    persistDeletedIdsLocally();
+                }
+                if (data && Array.isArray(data.wishes)) {
+                    wishesData = mergeWishesLists(data.wishes, wishesData);
+                    persistWishesLocally();
+                    renderFloatingWishes();
+                }
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function pushToJsonBlobMirror() {
+            try {
+                const payload = {
+                    wishes: wishesData.slice(0, 25),
+                    deletedIds: Array.from(deletedWishIds).slice(-80),
+                    updatedAt: Date.now()
+                };
+                const res = await fetch(JSONBLOB_MIRROR_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                return res.ok;
+            } catch (e) {
+                return false;
             }
         }
 
@@ -2261,12 +2204,17 @@
 
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
-            const [p1, p2] = await Promise.all([
+            const [p1, p2, p3] = await Promise.all([
                 pullFromNtfyEndpoint(NTFY_CHANNEL_A),
-                pullFromNtfyEndpoint(NTFY_CHANNEL_B)
+                pullFromNtfyEndpoint(NTFY_CHANNEL_B),
+                pullFromJsonBlobMirror()
             ]);
-            if (syncPill && (p1 || p2)) {
-                syncPill.textContent = `🟢 Live Multi-Device Sync (${wishesData.length})`;
+            if (syncPill) {
+                if (p1 || p2 || p3) {
+                    syncPill.textContent = `🟢 Multi-Device Cloud Synced (${wishesData.length})`;
+                } else {
+                    syncPill.textContent = `🟡 Offline / Use Copy Sync Link (${wishesData.length})`;
+                }
             }
             if (manualNotify) {
                 showToast(`Synced! ${wishesData.length} floating wish(es) active 🔄`, '🎈');
@@ -2299,53 +2247,20 @@
 
             const addStr = JSON.stringify(addPayload);
             const snapStr = JSON.stringify(snapshotPayload);
-            await Promise.all([
+            const [r1, r2, r3] = await Promise.all([
                 pushWithRetry(NTFY_CHANNEL_A, addStr, 3),
-                pushWithRetry(NTFY_CHANNEL_B, snapStr, 3)
+                pushWithRetry(NTFY_CHANNEL_B, snapStr, 3),
+                pushToJsonBlobMirror()
             ]);
 
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = `🟢 Live Multi-Device Sync (${wishesData.length})`;
+                syncPill.textContent = (r1 || r2 || r3)
+                    ? `🟢 Multi-Device Cloud Synced (${wishesData.length})`
+                    : `🟡 Saved Locally — Tap Copy Sync Link`;
             }
         }
-
-        function attachSseTopic(topicUrl) {
-            if (typeof EventSource === 'undefined') return null;
-            try {
-                const es = new EventSource(`${topicUrl}/sse?since=all`);
-                es.onmessage = (event) => {
-                    const payload = parseNtfyPayloadLine(event.data);
-                    if (!payload) return;
-                    if (payload.action === 'delete') {
-                        window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
-                    } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
-                        if (Array.isArray(payload.deletedIds)) {
-                            payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                            persistDeletedIdsLocally();
-                        }
-                        wishesData = mergeWishesLists(payload.wishes, wishesData);
-                        persistWishesLocally();
-                        renderFloatingWishes();
-                    } else if (payload.action === 'add' && payload.author && payload.text) {
-                        wishesData = mergeWishesLists([payload], wishesData);
-                        persistWishesLocally();
-                        renderFloatingWishes();
-                    }
-                };
-                return es;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function startLiveSquadStream() {
-            if (sseConnectionA) { try { sseConnectionA.close(); } catch (e) {} }
-            if (sseConnectionB) { try { sseConnectionB.close(); } catch (e) {} }
-            sseConnectionA = attachSseTopic(NTFY_CHANNEL_A);
-            sseConnectionB = attachSseTopic(NTFY_CHANNEL_B);
-        }
-
+// ... existing code ... -->
         async function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
@@ -2371,723 +2286,8 @@
             }
             await Promise.all([
                 pushWithRetry(NTFY_CHANNEL_A, JSON.stringify(delPayload), 3),
-                pushWithRetry(NTFY_CHANNEL_B, JSON.stringify(snapPayload), 3)
+                pushWithRetry(NTFY_CHANNEL_B, JSON.stringify(snapPayload), 3),
+                pushToJsonBlobMirror()
             ]);
         }
-
-        function escapeHtml(str) {
-            return String(str || '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
-
-        function renderFloatingWishes() {
-            const layer = document.getElementById('floating-wishes-layer');
-            const listEl = document.getElementById('wishes-list');
-            const countLabel = document.getElementById('floating-wish-count-label');
-            const boardCounter = document.getElementById('wishes-board-counter');
-
-            if (countLabel) {
-                countLabel.textContent = `Floating Wishes (${wishesData.length})`;
-            }
-            if (boardCounter) {
-                const uniqueAuthors = new Set(wishesData.map(w => w.author.toLowerCase()));
-                boardCounter.textContent = `${Math.min(8, uniqueAuthors.size)} / 8 Buddies Floated`;
-            }
-
-            if (layer) {
-                layer.innerHTML = '';
-                if (floatingVisible) {
-                    const positions = [
-                        { top: '14%', left: '3%' },
-                        { top: '26%', right: '3%' },
-                        { top: '44%', left: '2%' },
-                        { top: '58%', right: '3%' },
-                        { top: '72%', left: '4%' },
-                        { top: '80%', right: '5%' }
-                    ];
-                    wishesData.slice(0, 6).forEach((wish, idx) => {
-                        const pos = positions[idx % positions.length];
-                        const bubble = document.createElement('div');
-                        bubble.className = 'floating-wish-bubble fixed max-w-[235px] sm:max-w-[270px] rounded-2xl bg-[#151138]/92 border border-pink-400/55 px-3.5 py-2.5 shadow-xl shadow-pink-500/25 backdrop-blur-md text-xs';
-                        if (pos.top) bubble.style.top = pos.top;
-                        if (pos.left) bubble.style.left = pos.left;
-                        if (pos.right) bubble.style.right = pos.right;
-                        bubble.style.setProperty('--drift-dur', `${6 + (idx % 4)}s`);
-                        bubble.style.setProperty('--drift-delay', `${idx * 0.5}s`);
-                        bubble.innerHTML = `
-                            <div class="flex items-center justify-between gap-2 mb-1">
-                                <span class="font-display font-bold text-amber-300 truncate">🎈 ${escapeHtml(wish.author)}</span>
-                                <button type="button" onclick="deleteFloatingWish(${idx})" class="text-slate-400 hover:text-rose-400 font-bold text-[11px] cursor-pointer" title="Delete for all buddies">✕</button>
-                            </div>
-                            <p class="text-slate-100 leading-snug line-clamp-3">${escapeHtml(wish.text)}</p>
-                        `;
-                        layer.appendChild(bubble);
-                    });
-                }
-            }
-
-            if (listEl) {
-                if (wishesData.length === 0) {
-                    listEl.innerHTML = `
-                        <div class="text-center py-6 text-xs text-slate-400 border border-dashed border-purple-500/30 rounded-2xl">
-                            No wishes floating yet! Be the first buddy to submit above and watch your wish float across the screen 🎈
-                        </div>
-                    `;
-                } else {
-                    listEl.innerHTML = wishesData.map((w, idx) => `
-                        <div class="p-3.5 rounded-2xl bg-white/5 border border-pink-500/25 flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="font-display font-bold text-sm text-amber-300">${escapeHtml(w.author)}</span>
-                                    <span class="text-[10px] text-slate-400">${escapeHtml(w.date || '13/11/2026')}</span>
-                                </div>
-                                <p class="text-xs text-slate-200 leading-relaxed break-words">${escapeHtml(w.text)}</p>
-                            </div>
-                            <button type="button" onclick="deleteFloatingWish(${idx})" class="shrink-0 w-7 h-7 rounded-full bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 text-xs font-bold flex items-center justify-center cursor-pointer" title="Delete wish">✕</button>
-                        </div>
-                    `).join('');
-                }
-            }
-        }
-
-        function toggleFloatingWishes() {
-            floatingVisible = !floatingVisible;
-            renderFloatingWishes();
-            showToast(floatingVisible ? 'Floating wishes visible 🎈' : 'Floating wishes hidden', '🎈');
-        }
-
-        function copySquadSyncLink() {
-            persistWishesLocally();
-            const url = window.location.href;
-            const tempInput = document.createElement('input');
-            tempInput.value = url;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            showToast('Live Squad Sync Link copied! Paste it in WhatsApp 🔗', '📋');
-        }
-
-        async function addNewSquadWish(author, text, cardMeta = null) {
-            const cleanAuthor = String(author || '').trim() || 'Fab 8 Buddy';
-            const cleanText = String(text || '').trim();
-            if (!cleanText) return;
-
-            const newWish = {
-                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                author: cleanAuthor,
-                text: cleanText,
-                date: new Date().toLocaleDateString('en-GB'),
-                createdAt: Date.now()
-            };
-
-            wishesData = [newWish, ...wishesData].slice(0, 30);
-            persistWishesLocally();
-            renderFloatingWishes();
-            triggerConfettiBurst(0.5, 0.4);
-            await pushSharedCloudWishes(newWish);
-
-            sendCardAndOpenShareModal(cardMeta || {
-                type: '🎈 Floating Anniversary Wish',
-                headline: `Wish from ${cleanAuthor} 🥳`,
-                body: cleanText,
-                author: `— ${cleanAuthor}`
-            });
-        }
-
-        const wishFormEl = document.getElementById('wish-form');
-        if (wishFormEl) {
-            wishFormEl.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                const nameInput = document.getElementById('wish-name');
-                const textInput = document.getElementById('wish-text');
-                const author = nameInput ? nameInput.value.trim() : '';
-                const text = textInput ? textInput.value.trim() : '';
-                if (!author || !text) return;
-                if (textInput) textInput.value = '';
-                await addNewSquadWish(author, text);
-            });
-        }
-
-        async function sendGopiBirthdayWish() {
-            const senderInput = document.getElementById('gopi-bday-sender');
-            const msgInput = document.getElementById('gopi-bday-msg');
-            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
-            const msg = (msgInput && msgInput.value.trim()) || 'Happy Birthday Gopi bhai! 😂🎂🥳';
-            await addNewSquadWish(`${sender} 🎂 (For Gopi)`, msg, {
-                type: "🎂 Gopi's Birthday Card",
-                headline: 'Happy Birthday Gopi 😂🥳!',
-                body: msg,
-                author: `— With love from ${sender}`
-            });
-        }
-
-        if (squadBroadcast) {
-            squadBroadcast.onmessage = (ev) => {
-                const msg = ev.data;
-                if (!msg) return;
-                if (msg.action === 'delete') {
-                    window.registerRemoteDeletedWish(msg.wishId, msg.key, msg.deletedAt || 0);
-                } else if (msg.action === 'add' && msg.author && msg.text) {
-                    wishesData = mergeWishesLists([msg], wishesData);
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                }
-            };
-        }
-
-        window.addEventListener('storage', (ev) => {
-            if (ev.key === WISHES_STORAGE_KEY || ev.key === DELETED_IDS_STORAGE_KEY) {
-                loadSavedWishesOnBoot().then(() => renderFloatingWishes());
-            }
-        });
-
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) fetchSharedCloudWishes(false);
-        });
-        window.addEventListener('online', () => fetchSharedCloudWishes(false));
-        setInterval(() => fetchSharedCloudWishes(false), 10000);
-
-        // ==========================================
-        // 5. SHAREABLE CARD MODAL, EMAIL & WHATSAPP
-        // ==========================================
-        let currentShareCard = {
-            type: '🎈 Floating Anniversary Wish',
-            headline: 'Happy 4th Anniversary!',
-            body: 'Four years of 😍Best buddies forever🥳!',
-            author: '— The Fab 8'
-        };
-
-        function sendCardAndOpenShareModal(card) {
-            currentShareCard = card;
-            const modal = document.getElementById('share-card-modal');
-            const badge = document.getElementById('card-badge-type');
-            const headline = document.getElementById('card-headline');
-            const body = document.getElementById('card-body-text');
-            const author = document.getElementById('card-author-tag');
-            const emailStatus = document.getElementById('email-delivery-badge');
-            const mailtoBtn = document.getElementById('mailto-fallback-btn');
-
-            if (badge) badge.textContent = card.type;
-            if (headline) headline.textContent = card.headline;
-            if (body) body.textContent = card.body;
-            if (author) author.textContent = card.author;
-
-            const subject = encodeURIComponent(`😍Best buddies forever🥳 - ${card.headline}`);
-            const mailBody = encodeURIComponent(`${card.headline}\n\n${card.body}\n\n${card.author}\n\nLive Link: ${window.location.href}`);
-            if (mailtoBtn) mailtoBtn.href = `mailto:mk9860490@gmail.com?subject=${subject}&body=${mailBody}`;
-
-            if (emailStatus) emailStatus.textContent = '✉️ Sending card to mk9860490@gmail.com...';
-            fetch('https://formsubmit.co/ajax/mk9860490@gmail.com', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    _subject: `😍Best buddies forever🥳 - ${card.headline}`,
-                    Card_Type: card.type,
-                    Headline: card.headline,
-                    Message: card.body,
-                    From: card.author
-                })
-            })
-                .then(r => {
-                    if (emailStatus) {
-                        emailStatus.textContent = r.ok
-                            ? '✅ Card sent to mk9860490@gmail.com!'
-                            : '✅ Card ready to share below!';
-                    }
-                })
-                .catch(() => {
-                    if (emailStatus) emailStatus.textContent = '✅ Card ready to share below!';
-                });
-
-            if (modal) {
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-            }
-        }
-
-        function closeShareModal() {
-            const modal = document.getElementById('share-card-modal');
-            if (modal) {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-            }
-        }
-
-        function shareCardToWhatsApp() {
-            const text = `*😍Best buddies forever🥳*\n_${currentShareCard.type}_\n\n*${currentShareCard.headline}*\n"${currentShareCard.body}"\n${currentShareCard.author}\n\n🔗 Live Squad Wall: ${window.location.href}`;
-            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-        }
-
-        function downloadCardAsImage() {
-            const canvas = document.getElementById('card-export-canvas');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createLinearGradient(0, 0, 900, 540);
-            grad.addColorStop(0, '#1e1b4b');
-            grad.addColorStop(0.5, '#581c87');
-            grad.addColorStop(1, '#831843');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, 900, 540);
-
-            ctx.fillStyle = '#fde047';
-            ctx.font = 'bold 24px sans-serif';
-            ctx.fillText('😍 Best buddies forever 🥳 • 4th Anniversary', 55, 75);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 40px sans-serif';
-            ctx.fillText(currentShareCard.headline.slice(0, 38), 55, 160);
-
-            ctx.fillStyle = '#f8fafc';
-            ctx.font = '26px sans-serif';
-            const words = currentShareCard.body.split(' ');
-            let line = '';
-            let y = 235;
-            words.forEach(w => {
-                const test = line + w + ' ';
-                if (ctx.measureText(test).width > 780) {
-                    ctx.fillText(line, 55, y);
-                    line = w + ' ';
-                    y += 38;
-                } else {
-                    line = test;
-                }
-            });
-            ctx.fillText(line, 55, y);
-
-            ctx.fillStyle = '#a5f3fc';
-            ctx.font = 'bold 24px sans-serif';
-            ctx.fillText(`${currentShareCard.author}   |   13/11/2022 – 13/11/2026`, 55, 480);
-
-            const link = document.createElement('a');
-            link.download = 'best-buddies-forever-card.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            showToast('Card downloaded as .PNG! 🖼️', '🥳');
-        }
-
-        // ==========================================
-        // 6. VIRTUAL CAKE & SUPERLATIVE WHEEL
-        // ==========================================
-        function blowOutCandles() {
-            const flames = document.querySelectorAll('.flame');
-            flames.forEach(f => f.classList.add('blown-out'));
-            const status = document.getElementById('cake-status-text');
-            if (status) status.textContent = '🎉 Yay! All 4 candles blown out! Happy 4th Anniversary Fab 8!';
-            triggerConfettiBurst(0.35, 0.55);
-            showToast('Happy 4th Anniversary 😍Best buddies forever🥳!', '🎂');
-        }
-
-        function relightCandles() {
-            document.querySelectorAll('.flame').forEach(f => f.classList.remove('blown-out'));
-            const status = document.getElementById('cake-status-text');
-            if (status) status.textContent = 'Tap the cake below to blow out all 4 candles! 🌬️';
-        }
-
-        const superlativePrompts = [
-            "Most likely to say 'I'm 5 mins away' while still in bed",
-            "Most likely to send a 4-minute voice note instead of texting",
-            "Most likely to plan a whole trip and cancel at the last second",
-            "Most likely to reply 3 business days later",
-            "Most likely to judge a hangout solely by the food menu",
-            "Most likely to drop deep life advice at 2:30 AM",
-            "Most likely to reply with a sticker within 0.2 seconds",
-            "Most likely to hype everyone's Instagram photo 10 times"
-        ];
-        let lastSuperlativeResult = null;
-
-        function spinSuperlative() {
-            const promptEl = document.getElementById('superlative-prompt');
-            const winnerEl = document.getElementById('wheel-winner');
-            const emojiEl = document.getElementById('wheel-winner-emoji');
-            const shareBtn = document.getElementById('share-superlative-btn');
-
-            let ticks = 0;
-            const interval = setInterval(() => {
-                const randBuddy = fab8Roster[Math.floor(Math.random() * fab8Roster.length)];
-                const randPrompt = superlativePrompts[Math.floor(Math.random() * superlativePrompts.length)];
-                if (winnerEl) winnerEl.textContent = randBuddy.name;
-                if (emojiEl) emojiEl.textContent = randBuddy.emoji;
-                if (promptEl) promptEl.textContent = `"${randPrompt}"`;
-                ticks++;
-                if (ticks > 14) {
-                    clearInterval(interval);
-                    lastSuperlativeResult = {
-                        prompt: randPrompt,
-                        buddy: randBuddy
-                    };
-                    if (shareBtn) shareBtn.classList.remove('hidden');
-                    triggerConfettiBurst(0.68, 0.55);
-                }
-            }, 75);
-        }
-
-        function shareLastSuperlative() {
-            if (!lastSuperlativeResult) return;
-            sendCardAndOpenShareModal({
-                type: '🎰 Squad Superlative Award',
-                headline: `${lastSuperlativeResult.buddy.name} ${lastSuperlativeResult.buddy.emoji} Wins!`,
-                body: `Voted "${lastSuperlativeResult.prompt}" by 😍Best buddies forever🥳!`,
-                author: '— Squad Superlative Wheel'
-            });
-        }
-
-        // ==========================================
-        // 7. GAME 1: FAB 8 HOT POTATO & PASS-THE-BOMB
-        // ==========================================
-        let bombHolderIndex = 0;
-        let bombDirection = 1;
-        let bombInterval = null;
-        let bombTimeout = null;
-        let bombActive = false;
-        let lastBombLoser = null;
-
-        function renderHotPotatoRing(activeIdx = -1, exploded = false) {
-            const ring = document.getElementById('hot-potato-ring');
-            if (!ring) return;
-            ring.innerHTML = fab8Roster.map((b, idx) => {
-                const hasBomb = idx === activeIdx;
-                const borderClass = hasBomb
-                    ? (exploded ? 'border-rose-500 bg-rose-600/35 scale-105 shadow-lg shadow-rose-500/40' : 'border-amber-400 bg-amber-500/25 scale-105 shadow-lg shadow-amber-500/30')
-                    : 'border-white/15 bg-white/5';
-                return `
-                    <div class="p-3.5 rounded-2xl border-2 ${borderClass} text-center transition-all">
-                        <div class="text-2xl mb-1">${hasBomb ? (exploded ? '💥' : '💣') : b.emoji}</div>
-                        <div class="font-display font-bold text-sm text-white">${b.name}</div>
-                        <div class="text-[10px] text-slate-300 truncate">${hasBomb ? (exploded ? 'CAUGHT!' : 'HOLDING BOMB!') : b.title}</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function startHotPotatoGame() {
-            clearInterval(bombInterval);
-            clearTimeout(bombTimeout);
-            bombActive = true;
-            bombHolderIndex = Math.floor(Math.random() * fab8Roster.length);
-            bombDirection = 1;
-            renderHotPotatoRing(bombHolderIndex, false);
-
-            const passBtn = document.getElementById('bomb-pass-btn');
-            const revBtn = document.getElementById('bomb-reverse-btn');
-            const shareBtn = document.getElementById('bomb-share-btn');
-            const titleEl = document.getElementById('bomb-status-title');
-            const subEl = document.getElementById('bomb-status-sub');
-
-            if (passBtn) passBtn.disabled = false;
-            if (revBtn) revBtn.disabled = false;
-            if (shareBtn) shareBtn.classList.add('hidden');
-            if (titleEl) titleEl.textContent = '🔥 Fuse Lit! Pass Fast!';
-            if (subEl) subEl.textContent = `Currently with ${fab8Roster[bombHolderIndex].name}! Tap Pass Now!`;
-
-            bombInterval = setInterval(() => {
-                if (!bombActive) return;
-                bombHolderIndex = (bombHolderIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
-                renderHotPotatoRing(bombHolderIndex, false);
-                if (subEl) subEl.textContent = `Ticking on ${fab8Roster[bombHolderIndex].name} ${fab8Roster[bombHolderIndex].emoji}!`;
-            }, 650);
-
-            const fuseMs = 4500 + Math.floor(Math.random() * 4500);
-            bombTimeout = setTimeout(() => {
-                bombActive = false;
-                clearInterval(bombInterval);
-                const loser = fab8Roster[bombHolderIndex];
-                lastBombLoser = loser;
-                renderHotPotatoRing(bombHolderIndex, true);
-                if (passBtn) passBtn.disabled = true;
-                if (revBtn) revBtn.disabled = true;
-                if (shareBtn) shareBtn.classList.remove('hidden');
-                if (titleEl) titleEl.textContent = `💥 BOOM! ${loser.name} ${loser.emoji} Owes the Squad a Treat!`;
-                if (subEl) subEl.textContent = 'Tap "Share Dare Card" to post the penalty in the WhatsApp group!';
-                triggerConfettiBurst(0.5, 0.5);
-            }, fuseMs);
-        }
-
-        function manualPassBomb() {
-            if (!bombActive) return;
-            bombHolderIndex = (bombHolderIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
-            renderHotPotatoRing(bombHolderIndex, false);
-        }
-
-        function reverseBombDirection() {
-            if (!bombActive) return;
-            bombDirection *= -1;
-            showToast('Direction reversed! 🔄', '⚡');
-        }
-
-        function shareBombLoserCard() {
-            if (!lastBombLoser) return;
-            sendCardAndOpenShareModal({
-                type: '💣 Hot Potato Party Dare',
-                headline: `${lastBombLoser.name} ${lastBombLoser.emoji} Got Caught!`,
-                body: `The 4th Anniversary Party Bomb exploded on ${lastBombLoser.name}! Official Squad Dare: Next snacks & chai treat is on you!`,
-                author: '— Fab 8 Party Arena'
-            });
-        }
-
-        // ==========================================
-        // 8. GAME 2: FAB 8 MEMORY FLIP & SQUAD MATCH
-        // ==========================================
-        let memCards = [];
-        let memFlipped = [];
-        let memMatchedCount = 0;
-        let memMoves = 0;
-        let memLock = false;
-
-        function initMemoryGame() {
-            memFlipped = [];
-            memMatchedCount = 0;
-            memMoves = 0;
-            memLock = false;
-            const movesEl = document.getElementById('mem-moves');
-            const pairsEl = document.getElementById('mem-pairs');
-            const winBanner = document.getElementById('memory-win-banner');
-            if (movesEl) movesEl.textContent = '0';
-            if (pairsEl) pairsEl.textContent = '0/8';
-            if (winBanner) winBanner.classList.add('hidden');
-
-            const deck = [];
-            fab8Roster.forEach((b, idx) => {
-                deck.push({ pairId: idx, label: b.name, sub: b.emoji, isTitle: false });
-                deck.push({ pairId: idx, label: b.title, sub: 'Squad Role', isTitle: true });
-            });
-            for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            memCards = deck;
-
-            const grid = document.getElementById('memory-grid');
-            if (!grid) return;
-            grid.innerHTML = memCards.map((card, i) => `
-                <div id="mem-tile-${i}" onclick="flipMemoryTile(${i})" class="mem-tile cursor-pointer select-none">
-                    <div class="mem-tile-inner">
-                        <div class="mem-tile-front bg-gradient-to-br from-[#231955] to-[#140e36] border border-purple-400/35 text-pink-300 font-display font-bold text-xl shadow">
-                            🥳
-                        </div>
-                        <div class="mem-tile-back bg-[#1a1344] border-2 border-cyan-400/50 text-center shadow-lg">
-                            <div class="text-lg mb-0.5">${card.isTitle ? '🏷️' : card.sub}</div>
-                            <div class="font-display font-bold text-xs sm:text-sm text-white leading-tight">${card.label}</div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function flipMemoryTile(index) {
-            if (memLock) return;
-            const tile = document.getElementById(`mem-tile-${index}`);
-            if (!tile || tile.classList.contains('revealed') || tile.classList.contains('matched')) return;
-
-            tile.classList.add('revealed');
-            memFlipped.push(index);
-
-            if (memFlipped.length === 2) {
-                memMoves++;
-                const movesEl = document.getElementById('mem-moves');
-                if (movesEl) movesEl.textContent = String(memMoves);
-
-                const [a, b] = memFlipped;
-                if (memCards[a].pairId === memCards[b].pairId) {
-                    document.getElementById(`mem-tile-${a}`)?.classList.add('matched');
-                    document.getElementById(`mem-tile-${b}`)?.classList.add('matched');
-                    memFlipped = [];
-                    memMatchedCount++;
-                    const pairsEl = document.getElementById('mem-pairs');
-                    if (pairsEl) pairsEl.textContent = `${memMatchedCount}/8`;
-                    if (memMatchedCount === 8) {
-                        const winBanner = document.getElementById('memory-win-banner');
-                        const winSub = document.getElementById('memory-win-sub');
-                        if (winSub) winSub.textContent = `Completed all 8 Fab Buddies pairs in ${memMoves} moves!`;
-                        if (winBanner) winBanner.classList.remove('hidden');
-                        triggerConfettiBurst(0.5, 0.5);
-                    }
-                } else {
-                    memLock = true;
-                    setTimeout(() => {
-                        document.getElementById(`mem-tile-${a}`)?.classList.remove('revealed');
-                        document.getElementById(`mem-tile-${b}`)?.classList.remove('revealed');
-                        memFlipped = [];
-                        memLock = false;
-                    }, 750);
-                }
-            }
-        }
-
-        function shareMemoryScoreCard() {
-            sendCardAndOpenShareModal({
-                type: '🃏 Fab 8 Memory Champion',
-                headline: `Matched All 8 Buddies in ${memMoves} Moves!`,
-                body: `I matched every Fab 8 legend with their iconic squad title in ${memMoves} moves on 😍Best buddies forever🥳!`,
-                author: '— Memory Match Winner'
-            });
-        }
-
-        // ==========================================
-        // 9. GAME 3: SQUAD STICKER BLITZ ARCADE
-        // ==========================================
-        let arcadeRunning = false;
-        let arcadeScore = 0;
-        let arcadeCombo = 1;
-        let arcadeTimeLeft = 25;
-        let arcadePlayerX = 50;
-        let arcadeSpawnTimer = null;
-        let arcadeClockTimer = null;
-        let arcadeAnimFrame = null;
-        let arcadeItems = [];
-
-        const arcadeArena = document.getElementById('arcade-arena');
-        const arcadePlayer = document.getElementById('arcade-player');
-        const arcadeBuddySelect = document.getElementById('arcade-buddy-select');
-
-        if (arcadeBuddySelect && arcadePlayer) {
-            arcadeBuddySelect.addEventListener('change', () => {
-                arcadePlayer.textContent = arcadeBuddySelect.value;
-            });
-        }
-
-        function moveArcadePlayer(clientX) {
-            if (!arcadeArena || !arcadePlayer) return;
-            const rect = arcadeArena.getBoundingClientRect();
-            const pct = Math.max(10, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
-            arcadePlayerX = pct;
-            arcadePlayer.style.left = `${pct}%`;
-        }
-
-        if (arcadeArena) {
-            arcadeArena.addEventListener('mousemove', (e) => moveArcadePlayer(e.clientX));
-            arcadeArena.addEventListener('touchmove', (e) => {
-                if (e.touches && e.touches[0]) moveArcadePlayer(e.touches[0].clientX);
-            }, { passive: true });
-        }
-
-        function startStickerBlitz() {
-            clearInterval(arcadeSpawnTimer);
-            clearInterval(arcadeClockTimer);
-            cancelAnimationFrame(arcadeAnimFrame);
-
-            arcadeRunning = true;
-            arcadeScore = 0;
-            arcadeCombo = 1;
-            arcadeTimeLeft = 25;
-            arcadeItems = [];
-
-            const itemsLayer = document.getElementById('arcade-items-layer');
-            const overlay = document.getElementById('arcade-overlay');
-            const shareBtn = document.getElementById('arcade-share-btn');
-            if (itemsLayer) itemsLayer.innerHTML = '';
-            if (overlay) overlay.classList.add('hidden');
-            if (shareBtn) shareBtn.classList.add('hidden');
-            updateArcadeHud();
-
-            arcadeSpawnTimer = setInterval(() => {
-                if (!arcadeRunning || !itemsLayer) return;
-                const pool = [
-                    { emoji: '🍳', pts: 10, bad: false },
-                    { emoji: '🎂', pts: 20, bad: false },
-                    { emoji: '😂', pts: 15, bad: false },
-                    { emoji: '🍔', pts: 15, bad: false },
-                    { emoji: '⏳', pts: -15, bad: true }
-                ];
-                const pick = pool[Math.floor(Math.random() * pool.length)];
-                const el = document.createElement('div');
-                el.className = 'absolute text-2xl sm:text-3xl pointer-events-none select-none';
-                const xPct = 8 + Math.random() * 84;
-                el.style.left = `${xPct}%`;
-                el.style.top = '-24px';
-                el.textContent = pick.emoji;
-                itemsLayer.appendChild(el);
-                arcadeItems.push({ el, x: xPct, y: -24, speed: 2.6 + Math.random() * 2.2, pts: pick.pts, bad: pick.bad });
-            }, 520);
-
-            arcadeClockTimer = setInterval(() => {
-                arcadeTimeLeft--;
-                updateArcadeHud();
-                if (arcadeTimeLeft <= 0) {
-                    endStickerBlitz();
-                }
-            }, 1000);
-
-            stepArcadeLoop();
-        }
-
-        function updateArcadeHud() {
-            const s = document.getElementById('arcade-score');
-            const c = document.getElementById('arcade-combo');
-            const t = document.getElementById('arcade-timer');
-            if (s) s.textContent = String(arcadeScore);
-            if (c) c.textContent = `${arcadeCombo}x`;
-            if (t) t.textContent = `${arcadeTimeLeft}s`;
-        }
-
-        function stepArcadeLoop() {
-            if (!arcadeRunning || !arcadeArena) return;
-            const height = arcadeArena.clientHeight || 300;
-            arcadeItems = arcadeItems.filter(item => {
-                item.y += item.speed;
-                item.el.style.top = `${item.y}px`;
-
-                if (item.y >= height - 56 && item.y <= height - 16 && Math.abs(item.x - arcadePlayerX) < 13) {
-                    if (item.bad) {
-                        arcadeScore = Math.max(0, arcadeScore + item.pts);
-                        arcadeCombo = 1;
-                    } else {
-                        arcadeScore += item.pts * arcadeCombo;
-                        arcadeCombo = Math.min(5, arcadeCombo + 1);
-                    }
-                    updateArcadeHud();
-                    item.el.remove();
-                    return false;
-                }
-                if (item.y > height + 20) {
-                    item.el.remove();
-                    return false;
-                }
-                return true;
-            });
-            arcadeAnimFrame = requestAnimationFrame(stepArcadeLoop);
-        }
-
-        function endStickerBlitz() {
-            arcadeRunning = false;
-            clearInterval(arcadeSpawnTimer);
-            clearInterval(arcadeClockTimer);
-            cancelAnimationFrame(arcadeAnimFrame);
-
-            const overlay = document.getElementById('arcade-overlay');
-            const title = document.getElementById('arcade-overlay-title');
-            const sub = document.getElementById('arcade-overlay-sub');
-            const shareBtn = document.getElementById('arcade-share-btn');
-            const buddyName = arcadeBuddySelect ? arcadeBuddySelect.value : 'Fab 8 Buddy';
-
-            if (title) title.textContent = `🎉 Time's Up! Final Score: ${arcadeScore}`;
-            if (sub) sub.textContent = `${buddyName} crushed the Squad Sticker Blitz with ${arcadeScore} pts!`;
-            if (shareBtn) shareBtn.classList.remove('hidden');
-            if (overlay) overlay.classList.remove('hidden');
-            triggerConfettiBurst(0.5, 0.5);
-        }
-
-        function shareArcadeScoreCard() {
-            const buddyName = arcadeBuddySelect ? arcadeBuddySelect.value : 'Fab 8 Buddy';
-            sendCardAndOpenShareModal({
-                type: '⚡ Squad Sticker Blitz Score',
-                headline: `${buddyName} Scored ${arcadeScore} Pts!`,
-                body: `Caught Bread Omelets & Birthday Cakes in the 4th Anniversary Sticker Blitz on 😍Best buddies forever🥳!`,
-                author: `— ${buddyName}`
-            });
-        }
-
-        // Initialize all sections immediately on page load
-        loadSavedWishesOnBoot().then(() => {
-            renderFloatingWishes();
-            fetchSharedCloudWishes();
-            startLiveSquadStream();
-        });
-        renderHotPotatoRing(-1, false);
-        initMemoryGame();
-    </script>
-</body>
-</html>
+// ... existing code ... -->
