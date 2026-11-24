@@ -1634,9 +1634,9 @@
                     const cloudItems = [];
                     snapshot.forEach((docSnap) => {
                         const data = docSnap.data();
-                        if (data && data.action === 'delete' && data.key) {
-                            if (typeof window.registerRemoteDeletedWishKey === 'function') {
-                                window.registerRemoteDeletedWishKey(data.key);
+                        if (data && data.action === 'delete' && (data.wishId || data.key)) {
+                            if (typeof window.registerRemoteDeletedWish === 'function') {
+                                window.registerRemoteDeletedWish(data.wishId, data.key, data.deletedAt || data.createdAt || 0);
                             }
                             return;
                         }
@@ -1676,16 +1676,18 @@
                     } catch (e) {}
                 };
 
-                window.deleteWishFromLiveCloud = async function(cloudDocId, delKey) {
+                window.deleteWishFromLiveCloud = async function(cloudDocId, wishId, delKey) {
                     if (!auth.currentUser) return;
                     try {
                         if (cloudDocId) {
                             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'floating_wishes', cloudDocId));
                         }
-                        if (delKey) {
+                        if (wishId || delKey) {
                             await addDoc(wishesCol, {
                                 action: 'delete',
-                                key: delKey,
+                                wishId: wishId || '',
+                                key: delKey || '',
+                                deletedAt: Date.now(),
                                 createdAt: Date.now()
                             });
                         }
@@ -2077,35 +2079,58 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v8';
-        const DELETED_KEYS_STORAGE_KEY = 'bbf_fab8_deleted_wish_keys_v8';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v9';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v9';
         // Multi-mirror CORS-free cloud sync (primary ntfy.sh stream + secondary mirror + BroadcastChannel)
-        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026';
+        const NTFY_TOPIC_NAME = 'bbf_fab8_4th_anniv_squad_stream_2026_v9';
         const NTFY_TOPIC_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}`;
         const NTFY_BACKUP_URL = `https://ntfy.sh/${NTFY_TOPIC_NAME}_mirror`;
         let wishesData = [];
         let floatingVisible = true;
         let sseConnection = null;
-        let lastEventTimestamp = 0;
 
-        const deletedWishKeys = new Set();
+        const deletedWishIds = new Set();
 
         function makeWishKey(author, text) {
             return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
         }
 
-        function persistDeletedKeysLocally() {
+        function readWindowNameStore() {
             try {
-                window.localStorage.setItem(DELETED_KEYS_STORAGE_KEY, JSON.stringify(Array.from(deletedWishKeys)));
+                if (window.name && window.name.startsWith('BBF_STATE:')) {
+                    return JSON.parse(window.name.slice('BBF_STATE:'.length));
+                }
+            } catch (e) {}
+            return { wishes: [], deletedIds: [] };
+        }
+
+        function writeWindowNameStore() {
+            try {
+                window.name = 'BBF_STATE:' + JSON.stringify({
+                    wishes: wishesData.slice(0, 25),
+                    deletedIds: Array.from(deletedWishIds).slice(-100)
+                });
             } catch (e) {}
         }
 
-        window.registerRemoteDeletedWishKey = function(delKey) {
-            if (!delKey) return;
-            deletedWishKeys.add(delKey);
-            persistDeletedKeysLocally();
+        function persistDeletedIdsLocally() {
+            const arr = Array.from(deletedWishIds);
+            try { window.localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
+            try { window.sessionStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr)); } catch (e) {}
+            writeWindowNameStore();
+        }
+
+        window.registerRemoteDeletedWish = function(wishId, delKey, deletedAt = 0) {
+            if (wishId) deletedWishIds.add(String(wishId));
+            persistDeletedIdsLocally();
             const beforeCount = wishesData.length;
-            wishesData = wishesData.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
+            wishesData = wishesData.filter(item => {
+                if (wishId && String(item.id) === String(wishId)) return false;
+                if (!wishId && delKey && makeWishKey(item.author, item.text) === delKey && (item.createdAt || 0) <= deletedAt) {
+                    return false;
+                }
+                return true;
+            });
             if (wishesData.length !== beforeCount) {
                 persistWishesLocally();
                 renderFloatingWishes();
@@ -2116,7 +2141,7 @@
         let squadBroadcast = null;
         try {
             if (typeof BroadcastChannel !== 'undefined') {
-                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel');
+                squadBroadcast = new BroadcastChannel('bbf_fab8_wishes_channel_v9');
                 squadBroadcast.onmessage = function(ev) {
                     if (ev && ev.data) applyIncomingCloudEvent(ev.data);
                 };
@@ -2124,12 +2149,12 @@
         } catch (e) {}
 
         window.addEventListener('storage', function(e) {
-            if (e.key === DELETED_KEYS_STORAGE_KEY && e.newValue) {
+            if (e.key === DELETED_IDS_STORAGE_KEY && e.newValue) {
                 try {
-                    const keys = JSON.parse(e.newValue);
-                    if (Array.isArray(keys)) {
-                        keys.forEach(k => deletedWishKeys.add(k));
-                        wishesData = wishesData.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
+                    const ids = JSON.parse(e.newValue);
+                    if (Array.isArray(ids)) {
+                        ids.forEach(id => deletedWishIds.add(String(id)));
+                        wishesData = wishesData.filter(item => !deletedWishIds.has(String(item.id)));
                         renderFloatingWishes();
                     }
                 } catch (err) {}
@@ -2146,29 +2171,42 @@
         });
 
         function loadSavedWishesOnBoot() {
-            try {
-                const rawDeleted = window.localStorage.getItem(DELETED_KEYS_STORAGE_KEY);
-                if (rawDeleted) {
-                    const parsedDel = JSON.parse(rawDeleted);
-                    if (Array.isArray(parsedDel)) {
-                        parsedDel.forEach(k => deletedWishKeys.add(k));
+            const winStore = readWindowNameStore();
+            if (Array.isArray(winStore.deletedIds)) {
+                winStore.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+            }
+            [window.localStorage, window.sessionStorage].forEach(store => {
+                try {
+                    const rawDeleted = store.getItem(DELETED_IDS_STORAGE_KEY);
+                    if (rawDeleted) {
+                        const parsedDel = JSON.parse(rawDeleted);
+                        if (Array.isArray(parsedDel)) {
+                            parsedDel.forEach(id => deletedWishIds.add(String(id)));
+                        }
                     }
-                }
-            } catch (e) {}
+                } catch (e) {}
+            });
 
-            let loaded = [];
-            try {
-                const raw = window.localStorage.getItem(WISHES_STORAGE_KEY);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) loaded = parsed;
-                }
-            } catch (e) {}
+            let loaded = Array.isArray(winStore.wishes) ? [...winStore.wishes] : [];
+            [window.localStorage, window.sessionStorage].forEach(store => {
+                try {
+                    const raw = store.getItem(WISHES_STORAGE_KEY);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            loaded = mergeWishesLists(loaded, parsed);
+                        }
+                    }
+                } catch (e) {}
+            });
 
-            // Also merge any wishes passed via URL query (?wishes=...)
+            // Also merge any wishes passed via URL query (?wishes=...) or hash (#wishes=...)
             try {
                 const params = new URLSearchParams(window.location.search);
-                const encoded = params.get('wishes');
+                let encoded = params.get('wishes');
+                if (!encoded && window.location.hash && window.location.hash.includes('wishes=')) {
+                    encoded = new URLSearchParams(window.location.hash.slice(1)).get('wishes');
+                }
                 if (encoded) {
                     const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
                     if (Array.isArray(decoded)) {
@@ -2177,14 +2215,15 @@
                 }
             } catch (e) {}
 
-            wishesData = loaded.filter(item => !deletedWishKeys.has(makeWishKey(item.author, item.text)));
+            wishesData = loaded.filter(item => !deletedWishIds.has(String(item.id)));
             persistWishesLocally();
         }
 
         function persistWishesLocally() {
-            try {
-                window.localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(wishesData));
-            } catch (e) {}
+            const serialized = JSON.stringify(wishesData);
+            try { window.localStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
+            try { window.sessionStorage.setItem(WISHES_STORAGE_KEY, serialized); } catch (e) {}
+            writeWindowNameStore();
 
             try {
                 const url = new URL(window.location.href);
@@ -2193,7 +2232,8 @@
                         id: w.id,
                         author: w.author,
                         text: w.text,
-                        date: w.date || '13/11/2026'
+                        date: w.date || '13/11/2026',
+                        createdAt: w.createdAt || Date.now()
                     }));
                     const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))));
                     url.searchParams.set('wishes', encoded);
@@ -2243,23 +2283,26 @@
 
         function mergeWishesLists(listA, listB) {
             const merged = [];
-            const seen = new Set();
+            const seenKeys = new Set();
+            const seenIds = new Set();
             [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
                 if (!item || !item.author || !item.text) return;
+                const itemId = String(item.id || `${item.createdAt || 0}_${makeWishKey(item.author, item.text)}`);
+                if (deletedWishIds.has(itemId)) return;
                 const key = makeWishKey(item.author, item.text);
-                if (deletedWishKeys.has(key)) return;
-                if (!seen.has(key)) {
-                    seen.add(key);
+                if (!seenIds.has(itemId) && !seenKeys.has(key)) {
+                    seenIds.add(itemId);
+                    seenKeys.add(key);
                     merged.push({
                         cloudDocId: item.cloudDocId || null,
-                        id: item.id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        id: itemId,
                         author: item.author.trim(),
                         text: item.text.trim(),
                         date: item.date || '13/11/2026',
-                        createdAt: item.createdAt || 0
+                        createdAt: item.createdAt || Date.now()
                     });
                 } else if (item.cloudDocId) {
-                    const existing = merged.find(m => makeWishKey(m.author, m.text) === key);
+                    const existing = merged.find(m => m.id === itemId || makeWishKey(m.author, m.text) === key);
                     if (existing && !existing.cloudDocId) existing.cloudDocId = item.cloudDocId;
                 }
             });
@@ -2274,13 +2317,13 @@
 
         function applyIncomingCloudEvent(payload) {
             if (!payload || typeof payload !== 'object') return;
-            if (payload.action === 'delete' && payload.key) {
-                window.registerRemoteDeletedWishKey(payload.key);
+            if (payload.action === 'delete' && (payload.wishId || payload.key)) {
+                window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
                 return;
             }
             if (payload.author && payload.text) {
-                const key = makeWishKey(payload.author, payload.text);
-                if (deletedWishKeys.has(key)) return;
+                const itemId = String(payload.id || '');
+                if (itemId && deletedWishIds.has(itemId)) return;
                 wishesData = mergeWishesLists([payload], wishesData);
                 persistWishesLocally();
                 renderFloatingWishes();
@@ -2479,16 +2522,17 @@
         async function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
+            const wishId = String(removed.id || '');
             const delKey = makeWishKey(removed.author, removed.text);
-            deletedWishKeys.add(delKey);
-            persistDeletedKeysLocally();
+            if (wishId) deletedWishIds.add(wishId);
+            persistDeletedIdsLocally();
             persistWishesLocally();
             renderFloatingWishes();
             showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
             if (typeof window.deleteWishFromLiveCloud === 'function') {
-                await window.deleteWishFromLiveCloud(removed.cloudDocId, delKey);
+                await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
-            const delPayload = { action: 'delete', key: delKey, deletedAt: Date.now() };
+            const delPayload = { action: 'delete', wishId, key: delKey, deletedAt: Date.now() };
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
@@ -3052,6 +3096,7 @@
                 createdAt: Date.now()
             };
             wishesData.unshift(newWish);
+            persistWishesLocally();
             floatingVisible = true;
             renderFloatingWishes();
             pushSharedCloudWishes(newWish);
