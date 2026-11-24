@@ -2079,18 +2079,19 @@
         // ==========================================
         // 4. SHARED & REFRESH-SAFE FLOATING WISHES SYSTEM
         // ==========================================
-        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v14';
-        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v14';
-        const GLOBAL_KV_URL = 'https://kvdb.io/N5v8P2mQ9xR4tL7wK3zY6j/fab8_wishes_live_2026';
-        const NTFY_TOPIC_URL = 'https://ntfy.sh/bbf_fab8_squad_sync_9860490';
-        const NTFY_BACKUP_URL = 'https://ntfy.sh/bbf_fab8_squad_backup_9860490';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_floating_wishes_v15';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_wish_ids_v15';
+        // Dedicated CORS-enabled public pub/sub channels (no API keys required, works across all browsers & phones)
+        const NTFY_CHANNEL_A = 'https://ntfy.sh/fab8_anniversary_wishes_live_2026_v1';
+        const NTFY_CHANNEL_B = 'https://ntfy.sh/fab8_anniversary_wishes_mirror_2026_v1';
         let wishesData = [];
         let floatingVisible = true;
-        let sseConnection = null;
+        let sseConnectionA = null;
+        let sseConnectionB = null;
 
         const deletedWishIds = new Set();
         const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
-            ? new BroadcastChannel('bbf_fab8_squad_channel_v14')
+            ? new BroadcastChannel('bbf_fab8_squad_channel_v15')
             : null;
 
         function makeWishKey(author, text) {
@@ -2196,6 +2197,16 @@
             renderFloatingWishes();
         };
 
+        function parseNtfyPayloadLine(line) {
+            try {
+                const envelope = JSON.parse(line);
+                if (!envelope || !envelope.message) return null;
+                return JSON.parse(envelope.message);
+            } catch (e) {
+                return null;
+            }
+        }
+
         async function pullFromNtfyEndpoint(topicUrl) {
             try {
                 const res = await fetch(`${topicUrl}/json?poll=1&since=all&_t=${Date.now()}`, {
@@ -2207,16 +2218,19 @@
                 const lines = text.split('\n').filter(Boolean);
                 const incoming = [];
                 lines.forEach(line => {
-                    try {
-                        const envelope = JSON.parse(line);
-                        if (!envelope || !envelope.message) return;
-                        const payload = JSON.parse(envelope.message);
-                        if (payload.action === 'delete') {
-                            window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
-                        } else if (payload.action === 'add' && payload.author && payload.text) {
-                            incoming.push(payload);
+                    const payload = parseNtfyPayloadLine(line);
+                    if (!payload) return;
+                    if (payload.action === 'delete') {
+                        window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
+                    } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
+                        if (Array.isArray(payload.deletedIds)) {
+                            payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                            persistDeletedIdsLocally();
                         }
-                    } catch (e) {}
+                        payload.wishes.forEach(w => incoming.push(w));
+                    } else if (payload.action === 'add' && payload.author && payload.text) {
+                        incoming.push(payload);
+                    }
                 });
                 if (incoming.length > 0) {
                     wishesData = mergeWishesLists(incoming, wishesData);
@@ -2229,82 +2243,39 @@
             }
         }
 
-        async function pullFromGlobalKVStore() {
-            try {
-                const res = await fetch(`${GLOBAL_KV_URL}?_t=${Date.now()}`, {
-                    method: 'GET',
-                    cache: 'no-store'
-                });
-                if (!res.ok) return false;
-                const data = await res.json();
-                if (data && typeof data === 'object') {
-                    if (Array.isArray(data.deletedIds)) {
-                        data.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                        persistDeletedIdsLocally();
-                    }
-                    if (Array.isArray(data.wishes)) {
-                        const filteredRemote = data.wishes.filter(w => !deletedWishIds.has(String(w.id)));
-                        wishesData = mergeWishesLists(filteredRemote, wishesData);
-                        persistWishesLocally();
-                        renderFloatingWishes();
-                    }
-                    return true;
-                }
-            } catch (e) {}
-            return false;
-        }
-
-        async function pushWithRetry(url, bodyStr, retries = 2) {
+        async function pushWithRetry(url, bodyStr, retries = 3) {
             for (let attempt = 0; attempt <= retries; attempt++) {
                 try {
                     const res = await fetch(url, {
                         method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
                         body: bodyStr,
                         keepalive: true
                     });
                     if (res.ok) return true;
                 } catch (e) {}
-                await new Promise(r => setTimeout(r, 450 * (attempt + 1)));
+                await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
             }
             return false;
         }
 
-        async function pushToGlobalKVStore() {
-            const snapshot = {
-                wishes: wishesData.slice(0, 30),
-                deletedIds: Array.from(deletedWishIds).slice(-120),
-                updatedAt: Date.now()
-            };
-            try {
-                const res = await fetch(GLOBAL_KV_URL, {
-                    method: 'POST',
-                    body: JSON.stringify(snapshot),
-                    keepalive: true
-                });
-                return res.ok;
-            } catch (e) {
-                return false;
-            }
-        }
-
         async function fetchSharedCloudWishes(manualNotify = false) {
             const syncPill = document.getElementById('cloud-sync-pill');
-            const [kvOk, p1, p2] = await Promise.all([
-                pullFromGlobalKVStore(),
-                pullFromNtfyEndpoint(NTFY_TOPIC_URL),
-                pullFromNtfyEndpoint(NTFY_BACKUP_URL)
+            const [p1, p2] = await Promise.all([
+                pullFromNtfyEndpoint(NTFY_CHANNEL_A),
+                pullFromNtfyEndpoint(NTFY_CHANNEL_B)
             ]);
-            if (syncPill && (kvOk || p1 || p2)) {
-                syncPill.textContent = `🟢 Live Squad Sync Active (${wishesData.length})`;
+            if (syncPill && (p1 || p2)) {
+                syncPill.textContent = `🟢 Live Multi-Device Sync (${wishesData.length})`;
             }
             if (manualNotify) {
-                showToast(`Synced! ${wishesData.length} floating wish(es) loaded 🔄`, '🎈');
+                showToast(`Synced! ${wishesData.length} floating wish(es) active 🔄`, '🎈');
             }
         }
 
         async function pushSharedCloudWishes(newWish) {
             if (!newWish) return;
-            const payload = {
+            const addPayload = {
                 action: 'add',
                 id: newWish.id,
                 author: newWish.author,
@@ -2312,46 +2283,67 @@
                 date: newWish.date || '13/11/2026',
                 createdAt: newWish.createdAt || Date.now()
             };
+            const snapshotPayload = {
+                action: 'snapshot',
+                wishes: wishesData.slice(0, 20),
+                deletedIds: Array.from(deletedWishIds).slice(-60),
+                updatedAt: Date.now()
+            };
+
             if (squadBroadcast) {
-                try { squadBroadcast.postMessage(payload); } catch (e) {}
+                try { squadBroadcast.postMessage(addPayload); } catch (e) {}
             }
             if (typeof window.saveWishToLiveCloud === 'function') {
-                await window.saveWishToLiveCloud(payload);
+                await window.saveWishToLiveCloud(addPayload);
             }
-            const bodyStr = JSON.stringify(payload);
+
+            const addStr = JSON.stringify(addPayload);
+            const snapStr = JSON.stringify(snapshotPayload);
             await Promise.all([
-                pushToGlobalKVStore(),
-                pushWithRetry(NTFY_TOPIC_URL, bodyStr, 3),
-                pushWithRetry(NTFY_BACKUP_URL, bodyStr, 2)
+                pushWithRetry(NTFY_CHANNEL_A, addStr, 3),
+                pushWithRetry(NTFY_CHANNEL_B, snapStr, 3)
             ]);
+
             const syncPill = document.getElementById('cloud-sync-pill');
             if (syncPill) {
-                syncPill.textContent = `🟢 Live Squad Sync Active (${wishesData.length})`;
+                syncPill.textContent = `🟢 Live Multi-Device Sync (${wishesData.length})`;
+            }
+        }
+
+        function attachSseTopic(topicUrl) {
+            if (typeof EventSource === 'undefined') return null;
+            try {
+                const es = new EventSource(`${topicUrl}/sse?since=all`);
+                es.onmessage = (event) => {
+                    const payload = parseNtfyPayloadLine(event.data);
+                    if (!payload) return;
+                    if (payload.action === 'delete') {
+                        window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
+                    } else if (payload.action === 'snapshot' && Array.isArray(payload.wishes)) {
+                        if (Array.isArray(payload.deletedIds)) {
+                            payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                            persistDeletedIdsLocally();
+                        }
+                        wishesData = mergeWishesLists(payload.wishes, wishesData);
+                        persistWishesLocally();
+                        renderFloatingWishes();
+                    } else if (payload.action === 'add' && payload.author && payload.text) {
+                        wishesData = mergeWishesLists([payload], wishesData);
+                        persistWishesLocally();
+                        renderFloatingWishes();
+                    }
+                };
+                return es;
+            } catch (e) {
+                return null;
             }
         }
 
         function startLiveSquadStream() {
-            if (typeof EventSource === 'undefined') return;
-            if (sseConnection) {
-                try { sseConnection.close(); } catch (e) {}
-            }
-            try {
-                sseConnection = new EventSource(`${NTFY_TOPIC_URL}/sse?since=all`);
-                sseConnection.onmessage = (event) => {
-                    try {
-                        const envelope = JSON.parse(event.data);
-                        if (!envelope || !envelope.message) return;
-                        const payload = JSON.parse(envelope.message);
-                        if (payload.action === 'delete') {
-                            window.registerRemoteDeletedWish(payload.wishId, payload.key, payload.deletedAt || 0);
-                        } else if (payload.action === 'add' && payload.author && payload.text) {
-                            wishesData = mergeWishesLists([payload], wishesData);
-                            persistWishesLocally();
-                            renderFloatingWishes();
-                        }
-                    } catch (e) {}
-                };
-            } catch (e) {}
+            if (sseConnectionA) { try { sseConnectionA.close(); } catch (e) {} }
+            if (sseConnectionB) { try { sseConnectionB.close(); } catch (e) {} }
+            sseConnectionA = attachSseTopic(NTFY_CHANNEL_A);
+            sseConnectionB = attachSseTopic(NTFY_CHANNEL_B);
         }
 
         async function deleteFloatingWish(index) {
@@ -2368,14 +2360,18 @@
                 await window.deleteWishFromLiveCloud(removed.cloudDocId, wishId, delKey);
             }
             const delPayload = { action: 'delete', wishId, key: delKey, deletedAt: Date.now() };
+            const snapPayload = {
+                action: 'snapshot',
+                wishes: wishesData.slice(0, 20),
+                deletedIds: Array.from(deletedWishIds).slice(-60),
+                updatedAt: Date.now()
+            };
             if (squadBroadcast) {
                 try { squadBroadcast.postMessage(delPayload); } catch (e) {}
             }
-            const delBody = JSON.stringify(delPayload);
             await Promise.all([
-                pushToGlobalKVStore(),
-                pushWithRetry(NTFY_TOPIC_URL, delBody, 3),
-                pushWithRetry(NTFY_BACKUP_URL, delBody, 2)
+                pushWithRetry(NTFY_CHANNEL_A, JSON.stringify(delPayload), 3),
+                pushWithRetry(NTFY_CHANNEL_B, JSON.stringify(snapPayload), 3)
             ]);
         }
 
