@@ -125,6 +125,32 @@
             66% { transform: translate3d(-12px, -8px, 0) rotate(-1deg); }
             100% { transform: translate3d(0px, 0px, 0) rotate(-1.5deg); }
         }
+        @keyframes birthdayCrownFloat {
+            0%, 100% { transform: translateY(0px) rotate(-6deg) scale(1); }
+            50% { transform: translateY(-8px) rotate(6deg) scale(1.1); }
+        }
+        @keyframes birthdayRaySpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .bday-crown-anim {
+            animation: birthdayCrownFloat 2.4s ease-in-out infinite;
+        }
+        .bday-halo-spin {
+            animation: birthdayRaySpin 14s linear infinite;
+        }
+        @keyframes marqueeScroll {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+        }
+        .animate-marquee-track {
+            display: flex;
+            width: max-content;
+            animation: marqueeScroll 24s linear infinite;
+        }
+        .animate-marquee-track:hover {
+            animation-play-state: paused;
+        }
         .floating-wish-bubble {
             pointer-events: auto;
             animation: wishDrift var(--drift-dur, 7s) ease-in-out infinite;
@@ -393,13 +419,18 @@
         </div>
     </nav>
 
-    <!-- GOPI BIRTHDAY CELEBRATION RIBBON -->
-    <div class="bg-gradient-to-r from-amber-500/20 via-pink-500/25 to-cyan-500/20 border-b border-amber-400/40 py-2.5 px-4 text-center backdrop-blur-md">
-        <a href="#gopi-birthday" class="inline-flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-extrabold text-amber-200 hover:text-white transition">
-            <span>🎂🥳</span>
-            <span>NOVEMBER BIRTHDAY SPECIAL: Happy Birthday to our Meme Dealer, <span class="text-cyan-300 underline decoration-amber-400">GOPI 😂</span>!</span>
-            <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[11px] font-black">Send B'day Wish →</span>
-        </a>
+    <!-- SMOOTH SCROLLING ADVANCE BIRTHDAY MARQUEE FOR YUVARAJ (7TH DEC) & GOPI -->
+    <div class="bg-gradient-to-r from-orange-500/20 via-pink-500/25 to-amber-500/20 border-b border-orange-400/40 py-2.5 overflow-hidden backdrop-blur-md">
+        <div class="animate-marquee-track flex items-center gap-12 text-xs sm:text-sm font-extrabold text-amber-200 whitespace-nowrap">
+            <span>🍔🎉 ADVANCE HAPPY BIRTHDAY TO OUR FOOD CRITIC <span class="text-orange-300 underline decoration-pink-400">YUVARAJ 🍔</span> ON <span class="text-cyan-300">7TH DECEMBER</span>! 🎂🥳</span>
+            <span>✨•✨</span>
+            <span>🎂🥳 HAPPY BIRTHDAY TO OUR MEME DEALER <span class="text-cyan-300 underline decoration-amber-400">GOPI 😂</span>! 🎉</span>
+            <span>✨•✨</span>
+            <span>🍔🎉 ADVANCE HAPPY BIRTHDAY TO OUR FOOD CRITIC <span class="text-orange-300 underline decoration-pink-400">YUVARAJ 🍔</span> ON <span class="text-cyan-300">7TH DECEMBER</span>! 🎂🥳</span>
+            <span>✨•✨</span>
+            <span>🎂🥳 HAPPY BIRTHDAY TO OUR MEME DEALER <span class="text-cyan-300 underline decoration-amber-400">GOPI 😂</span>! 🎉</span>
+            <span>✨•✨</span>
+        </div>
     </div>
 
     <!-- HERO SECTION -->
@@ -1865,10 +1896,7 @@
         let floatingVisible = true;
         let mqttClients = [];
         let pendingMqttPublish = false;
-
-        const squadBroadcast = (typeof BroadcastChannel !== 'undefined')
-            ? new BroadcastChannel('bbf_fab8_same_browser_sync')
-            : null;
+        const squadBroadcast = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bbf_fab8_squad_sync_channel') : null;
 
         const floatingColors = [
             'from-pink-600/90 to-rose-700/90 border-pink-300/40',
@@ -1895,83 +1923,84 @@
             }[m]));
         }
 
-        function updateSyncStatusPill(text, isConnected = true) {
+        function updateSyncStatusPill(text, isOnline = true) {
             const pill = document.getElementById('cloud-sync-pill');
             if (!pill) return;
             pill.textContent = text;
-            pill.className = isConnected
+            pill.className = isOnline
                 ? 'inline-block px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold'
-                : 'inline-block px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-200 text-[11px] font-bold';
+                : 'inline-block px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-[11px] font-bold';
+        }
+
+        function mergeWishesLists(listA, listB) {
+            const merged = [];
+            const seen = new Set();
+            [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
+                if (!item || !item.author || !item.text) return;
+                const id = String(item.id || `${item.author}_${item.text}`);
+                if (deletedWishIds.has(id)) return;
+                const dedupeKey = `${id}::${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
+                if (!seen.has(dedupeKey)) {
+                    seen.add(dedupeKey);
+                    merged.push({
+                        id,
+                        author: item.author.trim(),
+                        text: item.text.trim(),
+                        date: item.date || '13/11/2026',
+                        createdAt: item.createdAt || Date.now()
+                    });
+                }
+            });
+            merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            return merged;
         }
 
         function persistDeletedIdsLocally() {
-            const arr = Array.from(deletedWishIds).slice(-200);
+            const arr = Array.from(deletedWishIds);
             try { localStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(arr)); } catch (e) {}
             try { sessionStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(arr)); } catch (e) {}
         }
 
         function persistWishesLocally() {
-            const cleanList = wishesData.filter(w => !w.id || !deletedWishIds.has(String(w.id)));
-            wishesData = cleanList;
-            const serialized = JSON.stringify(cleanList);
-            try { localStorage.setItem(LOCAL_WISHES_KEY, serialized); } catch (e) {}
-            try { sessionStorage.setItem(LOCAL_WISHES_KEY, serialized); } catch (e) {}
+            const json = JSON.stringify(wishesData);
+            try { localStorage.setItem(LOCAL_WISHES_KEY, json); } catch (e) {}
+            try { sessionStorage.setItem(LOCAL_WISHES_KEY, json); } catch (e) {}
             try {
-                if (cleanList.length > 0) {
-                    const b64 = btoa(unescape(encodeURIComponent(serialized)));
-                    window.location.hash = 'wishes=' + encodeURIComponent(b64);
+                if (wishesData.length > 0) {
+                    const encoded = btoa(unescape(encodeURIComponent(json)));
+                    if (encoded.length < 3500) {
+                        window.location.hash = 'wishes=' + encoded;
+                    }
                 } else if (window.location.hash.startsWith('#wishes=')) {
-                    window.location.hash = '';
+                    history.replaceState(null, '', window.location.pathname + window.location.search);
                 }
             } catch (e) {}
-        }
-
-        function mergeWishesLists(listA, listB) {
-            const map = new Map();
-            [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
-                if (!item || !item.author || !item.text) return;
-                const id = String(item.id || `${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`);
-                if (deletedWishIds.has(id)) return;
-                if (!map.has(id)) {
-                    map.set(id, {
-                        id,
-                        author: String(item.author).trim(),
-                        text: String(item.text).trim(),
-                        date: String(item.date || '13/11/2026'),
-                        createdAt: Number(item.createdAt) || Date.now()
-                    });
-                }
-            });
-            return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         }
 
         function loadSavedWishesOnBoot() {
             try {
                 const rawDel = localStorage.getItem(LOCAL_DELETED_KEY) || sessionStorage.getItem(LOCAL_DELETED_KEY);
                 if (rawDel) {
-                    const parsedDel = JSON.parse(rawDel);
-                    if (Array.isArray(parsedDel)) {
-                        parsedDel.forEach(id => deletedWishIds.add(String(id)));
-                    }
+                    const arr = JSON.parse(rawDel);
+                    if (Array.isArray(arr)) arr.forEach(id => deletedWishIds.add(String(id)));
                 }
             } catch (e) {}
 
             let loaded = [];
             try {
-                const rawLocal = localStorage.getItem(LOCAL_WISHES_KEY) || sessionStorage.getItem(LOCAL_WISHES_KEY);
-                if (rawLocal) {
-                    const parsed = JSON.parse(rawLocal);
-                    if (Array.isArray(parsed)) loaded = mergeWishesLists(loaded, parsed);
+                if (window.location.hash && window.location.hash.includes('wishes=')) {
+                    const hashPart = window.location.hash.split('wishes=')[1].split('&')[0];
+                    const decoded = decodeURIComponent(escape(atob(hashPart)));
+                    const parsedHash = JSON.parse(decoded);
+                    if (Array.isArray(parsedHash)) loaded = mergeWishesLists(loaded, parsedHash);
                 }
             } catch (e) {}
 
             try {
-                const hash = window.location.hash || '';
-                if (hash.startsWith('#wishes=')) {
-                    const b64 = decodeURIComponent(hash.slice('#wishes='.length));
-                    const decoded = decodeURIComponent(escape(atob(b64)));
-                    const parsedHash = JSON.parse(decoded);
-                    if (Array.isArray(parsedHash)) loaded = mergeWishesLists(loaded, parsedHash);
+                const rawLocal = localStorage.getItem(LOCAL_WISHES_KEY) || sessionStorage.getItem(LOCAL_WISHES_KEY);
+                if (rawLocal) {
+                    const parsedLocal = JSON.parse(rawLocal);
+                    if (Array.isArray(parsedLocal)) loaded = mergeWishesLists(loaded, parsedLocal);
                 }
             } catch (e) {}
 
@@ -1979,99 +2008,67 @@
             renderFloatingWishes();
         }
 
+        function publishRetainedStateToAllBrokers() {
+            const payload = JSON.stringify({
+                action: 'snapshot',
+                wishes: wishesData,
+                deletedIds: Array.from(deletedWishIds),
+                updatedAt: Date.now()
+            });
+            let sentCount = 0;
+            mqttClients.forEach(client => {
+                if (client && client.connected) {
+                    try {
+                        client.publish(MQTT_RETAINED_TOPIC, payload, { qos: 1, retain: true });
+                        sentCount++;
+                    } catch (e) {}
+                }
+            });
+            pendingMqttPublish = sentCount === 0;
+        }
+
         function handleIncomingCloudPacket(payload) {
             if (!payload || typeof payload !== 'object') return;
 
             if (payload.action === 'delete' && payload.wishId) {
-                const delId = String(payload.wishId);
-                if (!deletedWishIds.has(delId)) {
-                    deletedWishIds.add(delId);
-                    persistDeletedIdsLocally();
-                }
-                const beforeLen = wishesData.length;
-                wishesData = wishesData.filter(w => String(w.id) !== delId);
-                if (wishesData.length !== beforeLen) {
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                    showToast('A buddy removed a floating wish 🗑️', '🗑️');
-                }
+                deletedWishIds.add(String(payload.wishId));
+                persistDeletedIdsLocally();
+                wishesData = wishesData.filter(w => String(w.id) !== String(payload.wishId));
+                persistWishesLocally();
+                renderFloatingWishes();
                 return;
             }
 
             if (payload.action === 'snapshot') {
-                let delChanged = false;
                 if (Array.isArray(payload.deletedIds)) {
-                    payload.deletedIds.forEach(id => {
-                        const sId = String(id);
-                        if (sId && !deletedWishIds.has(sId)) {
-                            deletedWishIds.add(sId);
-                            delChanged = true;
-                        }
-                    });
-                    if (delChanged) persistDeletedIdsLocally();
+                    payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
+                    persistDeletedIdsLocally();
                 }
-
-                const beforeCount = wishesData.length;
-                const filteredLocal = wishesData.filter(w => !w.id || !deletedWishIds.has(String(w.id)));
+                const filteredLocal = wishesData.filter(w => !deletedWishIds.has(String(w.id)));
                 const incomingWishes = Array.isArray(payload.wishes) ? payload.wishes : [];
-                wishesData = mergeWishesLists(filteredLocal, incomingWishes);
-
-                if (delChanged || wishesData.length !== beforeCount) {
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                }
+                wishesData = mergeWishesLists(incomingWishes, filteredLocal);
+                persistWishesLocally();
+                renderFloatingWishes();
                 updateSyncStatusPill(`🟢 Live Synced (${wishesData.length})`, true);
                 return;
             }
 
             if ((payload.action === 'add' || !payload.action) && payload.author && payload.text) {
-                const before = wishesData.length;
-                wishesData = mergeWishesLists(wishesData, [payload]);
-                if (wishesData.length > before) {
-                    persistWishesLocally();
-                    renderFloatingWishes();
-                    triggerConfettiBurst(0.5, 0.35);
-                    showToast(`New wish from ${payload.author}! 🎈`, '🎈');
-                }
-            }
-        }
-
-        function publishRetainedStateToAllBrokers() {
-            const snapshotPayload = JSON.stringify({
-                action: 'snapshot',
-                wishes: wishesData,
-                deletedIds: Array.from(deletedWishIds).slice(-200),
-                updatedAt: Date.now()
-            });
-
-            let sentCount = 0;
-            mqttClients.forEach(client => {
-                if (client && client.connected) {
-                    try {
-                        client.publish(MQTT_RETAINED_TOPIC, snapshotPayload, { qos: 1, retain: true });
-                        sentCount++;
-                    } catch (e) {}
-                }
-            });
-
-            if (sentCount === 0) {
-                pendingMqttPublish = true;
-            } else {
-                pendingMqttPublish = false;
-                updateSyncStatusPill(`🟢 Live Synced (${wishesData.length})`, true);
+                wishesData = mergeWishesLists([payload], wishesData);
+                persistWishesLocally();
+                renderFloatingWishes();
             }
         }
 
         function initDualMqttCloudSync() {
             if (typeof mqtt === 'undefined') {
-                updateSyncStatusPill('🟡 Local + Link Sync Mode', false);
+                updateSyncStatusPill('🟡 Saved on Device', false);
                 return;
             }
-
             MQTT_BROKERS.forEach((brokerUrl, index) => {
                 try {
                     const client = mqtt.connect(brokerUrl, {
-                        clientId: 'fab8_' + Math.random().toString(16).slice(2, 10) + '_' + index,
+                        clientId: `fab8_buddy_${index}_${Math.random().toString(16).slice(2, 10)}`,
                         protocolVersion: 4,
                         keepalive: 30,
                         reconnectPeriod: 4000,
@@ -2779,6 +2776,61 @@
             sendCardAndOpenShareModal({
                 type: '🎂 Happy Birthday Gopi 😂🥳',
                 headline: `Happy Birthday Gopi!`,
+                body: msg,
+                author: sender
+            });
+        }
+
+        // ==========================================
+        // 9C. YUVARAJ ADVANCE BIRTHDAY WISH LAUNCHER (7TH DECEMBER)
+        // ==========================================
+        function updateYuvarajBirthdayCountdown() {
+            const pill = document.getElementById('yuvaraj-countdown-pill');
+            if (!pill) return;
+            const now = new Date();
+            let target = new Date(now.getFullYear(), 11, 7, 0, 0, 0); // Dec 7
+            if (now > target && now.getDate() !== 7) {
+                target = new Date(now.getFullYear() + 1, 11, 7, 0, 0, 0);
+            }
+            const diffMs = target - now;
+            if (now.getMonth() === 11 && now.getDate() === 7) {
+                pill.textContent = '🎂 TODAY IS YUVARAJ’S BIRTHDAY!';
+                return;
+            }
+            const daysLeft = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+            pill.textContent = `⏳ ${daysLeft} Day${daysLeft === 1 ? '' : 's'} to 7th Dec!`;
+        }
+
+        function sendYuvarajAdvanceBirthdayWish() {
+            const senderInput = document.getElementById('yuvaraj-bday-sender');
+            const msgInput = document.getElementById('yuvaraj-bday-msg');
+            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
+            const msg = (msgInput && msgInput.value.trim()) || 'Advance Happy Birthday Yuvaraj (7th Dec)! 🍔🎂🥳';
+
+            const newWish = {
+                id: `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                author: `${sender} → Yuvaraj (Adv B'day 7 Dec) 🍔`,
+                text: msg,
+                date: '7 Dec Adv',
+                createdAt: Date.now()
+            };
+            wishesData = mergeWishesLists([newWish], wishesData);
+            floatingVisible = true;
+            persistWishesLocally();
+            renderFloatingWishes();
+
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage({ action: 'add', ...newWish }); } catch (e) {}
+            }
+            publishRetainedStateToAllBrokers();
+
+            triggerConfettiBurst(0.25, 0.45);
+            setTimeout(() => triggerConfettiBurst(0.5, 0.35), 180);
+            setTimeout(() => triggerConfettiBurst(0.75, 0.45), 360);
+
+            sendCardAndOpenShareModal({
+                type: '🍔 Advance Happy Birthday Yuvaraj (7th Dec) 🎉',
+                headline: `Advance Happy Birthday Yuvaraj!`,
                 body: msg,
                 author: sender
             });
