@@ -1267,6 +1267,9 @@
                         <button id="bomb-reverse-btn" onclick="reverseBombDirection()" disabled class="px-4 py-2.5 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/40 disabled:opacity-40 text-cyan-200 border border-cyan-400/40 font-bold text-xs transition cursor-pointer">
                             🔄 Reverse
                         </button>
+                        <button id="bomb-new-dare-btn" onclick="rerollBombDare()" class="hidden px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition cursor-pointer">
+                            🎲 New Dare
+                        </button>
                         <button id="bomb-share-btn" onclick="shareBombLoserCard()" class="hidden px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs transition cursor-pointer">
                             📤 Share Dare Card
                         </button>
@@ -1688,10 +1691,8 @@
             }, 600);
         }
 
-        // ==========================================
-        // 2B. VIDEO STAGE FOR B2B, G2G & G2B
-        // ==========================================
         const customActionMediaOverrides = {};
+        let currentActionMediaKey = 'B2B';
 
         function getActionMediaConfig(first, second, isSameGender) {
             if (isSameGender && first.gender === 'boy') {
@@ -1718,13 +1719,10 @@
             };
         }
 
-        let currentActionMediaKey = 'B2B';
-
         function showActionVideo(srcUrl) {
             const videoEl = document.getElementById('buddy-action-media-video');
             const fallbackBox = document.getElementById('buddy-media-fallback');
             if (!videoEl) return;
-
             if (fallbackBox) {
                 fallbackBox.classList.add('hidden');
                 fallbackBox.classList.remove('flex');
@@ -1753,7 +1751,6 @@
                 showActionVideo(override.url);
                 return;
             }
-
             if (!videoEl) return;
 
             let vidStep = 0;
@@ -1778,12 +1775,7 @@
             const file = event.target.files && event.target.files[0];
             if (!file) return;
             const objectUrl = URL.createObjectURL(file);
-
-            customActionMediaOverrides[currentActionMediaKey] = {
-                type: 'video',
-                url: objectUrl
-            };
-
+            customActionMediaOverrides[currentActionMediaKey] = { type: 'video', url: objectUrl };
             showActionVideo(objectUrl);
             showToast(`Custom video loaded for ${currentActionMediaKey}! 🎬`, '🥳');
         }
@@ -1799,10 +1791,6 @@
             const rightName = document.getElementById('stage-right-name');
             const centerEmblem = document.getElementById('stage-center-emblem');
 
-            const p1 = document.getElementById('stage-particle-1');
-            const p2 = document.getElementById('stage-particle-2');
-            const p3 = document.getElementById('stage-particle-3');
-
             if (leftTopName) leftTopName.textContent = `${first.name} (${first.gender === 'girl' ? '👧' : '👦'})`;
             if (rightTopName) rightTopName.textContent = `${second.name} (${second.gender === 'girl' ? '👧' : '👦'})`;
             if (leftName) leftName.textContent = `${first.emoji} ${first.title}`;
@@ -1813,17 +1801,11 @@
                 if (title) title.textContent = `${first.name} 🤗 ${second.name}`;
                 if (sub) sub.textContent = `Same squad energy! ${first.name} and ${second.name} are sharing a legendary 4th Anniversary bestie hug! 💖`;
                 if (centerEmblem) centerEmblem.textContent = '🤗💖';
-                if (p1) p1.textContent = '💖';
-                if (p2) p2.textContent = '🤗';
-                if (p3) p3.textContent = '💕';
             } else {
                 if (pill) pill.textContent = '👦🤝👧 Squad Respect Handshake!';
                 if (title) title.textContent = `${first.name} 🤝 ${second.name}`;
                 if (sub) sub.textContent = `4 Girls + 4 Boys unity! ${first.name} and ${second.name} are sharing an epic 4th Anniversary handshake! ✨`;
                 if (centerEmblem) centerEmblem.textContent = '🤝✨';
-                if (p1) p1.textContent = '✨';
-                if (p2) p2.textContent = '🤝';
-                if (p3) p3.textContent = '🌟';
             }
 
             setBuddyActionMedia(first, second, isSameGender);
@@ -1881,11 +1863,11 @@
         }
 
         // ==========================================
-        // 4. CROSS-DEVICE & CROSS-BROWSER FLOATING WISHES + GLOBAL DELETE SYNC
+        // 4. SHARED CROSS-DEVICE FLOATING WISHES & GLOBAL DELETE SYNC
         // ==========================================
-        const LOCAL_WISHES_KEY = 'bbf_fab8_wishes_v6';
-        const LOCAL_DELETED_KEY = 'bbf_fab8_deleted_ids_v6';
-        const MQTT_RETAINED_TOPIC = 'best_buddies_forever/fab8_2026/shared_wishes_state_v2';
+        const WISHES_STORAGE_KEY = 'bbf_fab8_wishes_v4';
+        const DELETED_IDS_STORAGE_KEY = 'bbf_fab8_deleted_ids_v4';
+        const MQTT_RETAINED_TOPIC = 'best_buddies_forever_fab8_2022_2026/shared_wishes_state_v2';
         const MQTT_BROKERS = [
             'wss://broker.emqx.io:8084/mqtt',
             'wss://broker.hivemq.com:8884/mqtt'
@@ -1896,7 +1878,10 @@
         let floatingVisible = true;
         let mqttClients = [];
         let pendingMqttPublish = false;
-        const squadBroadcast = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bbf_fab8_squad_sync_channel') : null;
+
+        const squadBroadcast = typeof BroadcastChannel !== 'undefined'
+            ? new BroadcastChannel('bbf_fab8_live_channel')
+            : null;
 
         const floatingColors = [
             'from-pink-600/90 to-rose-700/90 border-pink-300/40',
@@ -1923,13 +1908,22 @@
             }[m]));
         }
 
-        function updateSyncStatusPill(text, isOnline = true) {
-            const pill = document.getElementById('cloud-sync-pill');
-            if (!pill) return;
-            pill.textContent = text;
-            pill.className = isOnline
-                ? 'inline-block px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold'
-                : 'inline-block px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-[11px] font-bold';
+        function makeWishKey(author, text) {
+            return `${String(author || '').trim().toLowerCase()}::${String(text || '').trim().toLowerCase()}`;
+        }
+
+        function persistWishesLocally() {
+            try {
+                localStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(wishesData));
+                sessionStorage.setItem(WISHES_STORAGE_KEY, JSON.stringify(wishesData));
+            } catch (e) {}
+        }
+
+        function persistDeletedIdsLocally() {
+            try {
+                const arr = Array.from(deletedWishIds).slice(-250);
+                localStorage.setItem(DELETED_IDS_STORAGE_KEY, JSON.stringify(arr));
+            } catch (e) {}
         }
 
         function mergeWishesLists(listA, listB) {
@@ -1937,15 +1931,15 @@
             const seen = new Set();
             [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])].forEach(item => {
                 if (!item || !item.author || !item.text) return;
-                const id = String(item.id || `${item.author}_${item.text}`);
-                if (deletedWishIds.has(id)) return;
-                const dedupeKey = `${id}::${item.author.trim().toLowerCase()}::${item.text.trim().toLowerCase()}`;
-                if (!seen.has(dedupeKey)) {
-                    seen.add(dedupeKey);
+                const itemId = String(item.id || '');
+                const key = makeWishKey(item.author, item.text);
+                if ((itemId && deletedWishIds.has(itemId)) || deletedWishIds.has(key)) return;
+                if (!seen.has(key)) {
+                    seen.add(key);
                     merged.push({
-                        id,
-                        author: item.author.trim(),
-                        text: item.text.trim(),
+                        id: itemId || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        author: String(item.author).trim(),
+                        text: String(item.text).trim(),
                         date: item.date || '13/11/2026',
                         createdAt: item.createdAt || Date.now()
                     });
@@ -1955,66 +1949,36 @@
             return merged;
         }
 
-        function persistDeletedIdsLocally() {
-            const arr = Array.from(deletedWishIds);
-            try { localStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(arr)); } catch (e) {}
-            try { sessionStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(arr)); } catch (e) {}
-        }
-
-        function persistWishesLocally() {
-            const json = JSON.stringify(wishesData);
-            try { localStorage.setItem(LOCAL_WISHES_KEY, json); } catch (e) {}
-            try { sessionStorage.setItem(LOCAL_WISHES_KEY, json); } catch (e) {}
-            try {
-                if (wishesData.length > 0) {
-                    const encoded = btoa(unescape(encodeURIComponent(json)));
-                    if (encoded.length < 3500) {
-                        window.location.hash = 'wishes=' + encoded;
-                    }
-                } else if (window.location.hash.startsWith('#wishes=')) {
-                    history.replaceState(null, '', window.location.pathname + window.location.search);
-                }
-            } catch (e) {}
-        }
-
-        function loadSavedWishesOnBoot() {
-            try {
-                const rawDel = localStorage.getItem(LOCAL_DELETED_KEY) || sessionStorage.getItem(LOCAL_DELETED_KEY);
-                if (rawDel) {
-                    const arr = JSON.parse(rawDel);
-                    if (Array.isArray(arr)) arr.forEach(id => deletedWishIds.add(String(id)));
-                }
-            } catch (e) {}
-
-            let loaded = [];
-            try {
-                if (window.location.hash && window.location.hash.includes('wishes=')) {
-                    const hashPart = window.location.hash.split('wishes=')[1].split('&')[0];
-                    const decoded = decodeURIComponent(escape(atob(hashPart)));
-                    const parsedHash = JSON.parse(decoded);
-                    if (Array.isArray(parsedHash)) loaded = mergeWishesLists(loaded, parsedHash);
-                }
-            } catch (e) {}
-
-            try {
-                const rawLocal = localStorage.getItem(LOCAL_WISHES_KEY) || sessionStorage.getItem(LOCAL_WISHES_KEY);
-                if (rawLocal) {
-                    const parsedLocal = JSON.parse(rawLocal);
-                    if (Array.isArray(parsedLocal)) loaded = mergeWishesLists(loaded, parsedLocal);
-                }
-            } catch (e) {}
-
-            wishesData = loaded;
+        function applyIncomingCloudState(packet) {
+            if (!packet || typeof packet !== 'object') return;
+            if (Array.isArray(packet.deletedIds)) {
+                packet.deletedIds.forEach(d => {
+                    if (d) deletedWishIds.add(String(d));
+                });
+                persistDeletedIdsLocally();
+            }
+            const incomingWishes = Array.isArray(packet.wishes) ? packet.wishes : [];
+            wishesData = mergeWishesLists(incomingWishes, wishesData);
+            persistWishesLocally();
             renderFloatingWishes();
+
+            const syncPill = document.getElementById('cloud-sync-pill');
+            if (syncPill) {
+                syncPill.textContent = `🟢 Live Squad Sync (${wishesData.length})`;
+            }
         }
 
         function publishRetainedStateToAllBrokers() {
             const payload = JSON.stringify({
-                action: 'snapshot',
                 wishes: wishesData,
-                deletedIds: Array.from(deletedWishIds),
+                deletedIds: Array.from(deletedWishIds).slice(-250),
                 updatedAt: Date.now()
             });
+
+            if (squadBroadcast) {
+                try { squadBroadcast.postMessage({ type: 'state', payload: JSON.parse(payload) }); } catch (e) {}
+            }
+
             let sentCount = 0;
             mqttClients.forEach(client => {
                 if (client && client.connected) {
@@ -2024,51 +1988,19 @@
                     } catch (e) {}
                 }
             });
-            pendingMqttPublish = sentCount === 0;
-        }
-
-        function handleIncomingCloudPacket(payload) {
-            if (!payload || typeof payload !== 'object') return;
-
-            if (payload.action === 'delete' && payload.wishId) {
-                deletedWishIds.add(String(payload.wishId));
-                persistDeletedIdsLocally();
-                wishesData = wishesData.filter(w => String(w.id) !== String(payload.wishId));
-                persistWishesLocally();
-                renderFloatingWishes();
-                return;
-            }
-
-            if (payload.action === 'snapshot') {
-                if (Array.isArray(payload.deletedIds)) {
-                    payload.deletedIds.forEach(id => deletedWishIds.add(String(id)));
-                    persistDeletedIdsLocally();
-                }
-                const filteredLocal = wishesData.filter(w => !deletedWishIds.has(String(w.id)));
-                const incomingWishes = Array.isArray(payload.wishes) ? payload.wishes : [];
-                wishesData = mergeWishesLists(incomingWishes, filteredLocal);
-                persistWishesLocally();
-                renderFloatingWishes();
-                updateSyncStatusPill(`🟢 Live Synced (${wishesData.length})`, true);
-                return;
-            }
-
-            if ((payload.action === 'add' || !payload.action) && payload.author && payload.text) {
-                wishesData = mergeWishesLists([payload], wishesData);
-                persistWishesLocally();
-                renderFloatingWishes();
+            if (sentCount === 0) {
+                pendingMqttPublish = true;
             }
         }
 
-        function initDualMqttCloudSync() {
-            if (typeof mqtt === 'undefined') {
-                updateSyncStatusPill('🟡 Saved on Device', false);
-                return;
-            }
-            MQTT_BROKERS.forEach((brokerUrl, index) => {
+        function initMqttCloudSync() {
+            if (typeof mqtt === 'undefined') return;
+            const syncPill = document.getElementById('cloud-sync-pill');
+
+            MQTT_BROKERS.forEach((brokerUrl, idx) => {
                 try {
                     const client = mqtt.connect(brokerUrl, {
-                        clientId: `fab8_buddy_${index}_${Math.random().toString(16).slice(2, 10)}`,
+                        clientId: `bbf_fab8_${idx}_${Math.random().toString(16).slice(2, 10)}`,
                         protocolVersion: 4,
                         keepalive: 30,
                         reconnectPeriod: 4000,
@@ -2077,8 +2009,11 @@
 
                     client.on('connect', () => {
                         client.subscribe(MQTT_RETAINED_TOPIC, { qos: 1 });
-                        updateSyncStatusPill(`🟢 Live Synced (${wishesData.length})`, true);
+                        if (syncPill) {
+                            syncPill.textContent = `🟢 Live Squad Sync (${wishesData.length})`;
+                        }
                         if (pendingMqttPublish) {
+                            pendingMqttPublish = false;
                             publishRetainedStateToAllBrokers();
                         }
                     });
@@ -2087,15 +2022,56 @@
                         if (topic !== MQTT_RETAINED_TOPIC) return;
                         try {
                             const parsed = JSON.parse(messageBuffer.toString());
-                            handleIncomingCloudPacket(parsed);
+                            applyIncomingCloudState(parsed);
                         } catch (e) {}
                     });
 
-                    client.on('error', () => {});
                     mqttClients.push(client);
                 } catch (e) {}
             });
         }
+
+        function loadSavedWishesOnBoot() {
+            try {
+                const rawDeleted = localStorage.getItem(DELETED_IDS_STORAGE_KEY);
+                if (rawDeleted) {
+                    JSON.parse(rawDeleted).forEach(id => deletedWishIds.add(String(id)));
+                }
+            } catch (e) {}
+
+            try {
+                const rawWishes = localStorage.getItem(WISHES_STORAGE_KEY) || sessionStorage.getItem(WISHES_STORAGE_KEY);
+                if (rawWishes) {
+                    wishesData = mergeWishesLists(JSON.parse(rawWishes), []);
+                }
+            } catch (e) {}
+
+            if (window.location.hash && window.location.hash.startsWith('#wishes=')) {
+                try {
+                    const encoded = window.location.hash.slice('#wishes='.length);
+                    const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+                    if (Array.isArray(decoded)) {
+                        wishesData = mergeWishesLists(decoded, wishesData);
+                        persistWishesLocally();
+                    }
+                } catch (e) {}
+            }
+        }
+
+        if (squadBroadcast) {
+            squadBroadcast.onmessage = (ev) => {
+                if (ev.data && ev.data.type === 'state') {
+                    applyIncomingCloudState(ev.data.payload);
+                }
+            };
+        }
+
+        window.addEventListener('storage', (ev) => {
+            if (ev.key === WISHES_STORAGE_KEY || ev.key === DELETED_IDS_STORAGE_KEY) {
+                loadSavedWishesOnBoot();
+                renderFloatingWishes();
+            }
+        });
 
         function forceManualCloudSync() {
             mqttClients.forEach(client => {
@@ -2103,37 +2079,27 @@
                     client.subscribe(MQTT_RETAINED_TOPIC, { qos: 1 });
                 }
             });
-            if (wishesData.length > 0 || deletedWishIds.size > 0) {
-                publishRetainedStateToAllBrokers();
-            }
-            showToast(`Synced! ${wishesData.length} active floating wish(es) 🔄`, '🔄');
+            publishRetainedStateToAllBrokers();
+            renderFloatingWishes();
+            showToast('Synced floating wishes across all buddies! 🔄', '🟢');
         }
 
         function copySquadSyncLink() {
-            persistWishesLocally();
-            const shareUrl = window.location.href;
-            const tempInput = document.createElement('textarea');
-            tempInput.value = shareUrl;
-            document.body.appendChild(tempInput);
-            tempInput.select();
             try {
+                const payload = btoa(unescape(encodeURIComponent(JSON.stringify(wishesData))));
+                const baseUrl = window.location.href.split('#')[0];
+                const shareUrl = `${baseUrl}#wishes=${payload}`;
+                const tempInput = document.createElement('input');
+                tempInput.value = shareUrl;
+                document.body.appendChild(tempInput);
+                tempInput.select();
                 document.execCommand('copy');
-                showToast('Live Squad Link (with all wishes) copied! 📋', '🔗');
+                document.body.removeChild(tempInput);
+                showToast('Live Sync Link copied! Share in WhatsApp group 🔗', '📋');
             } catch (e) {
-                showToast('Copy the URL from your browser address bar!', '🔗');
+                showToast('Could not copy link', '⚠️');
             }
-            document.body.removeChild(tempInput);
         }
-
-        if (squadBroadcast) {
-            squadBroadcast.onmessage = (event) => handleIncomingCloudPacket(event.data);
-        }
-        window.addEventListener('storage', (e) => {
-            if (e.key === LOCAL_WISHES_KEY || e.key === LOCAL_DELETED_KEY) {
-                loadSavedWishesOnBoot();
-            }
-        });
-        window.addEventListener('hashchange', loadSavedWishesOnBoot);
 
         function renderFloatingWishes() {
             const layer = document.getElementById('floating-wishes-layer');
@@ -2173,7 +2139,7 @@
                                 <span class="text-[11px] font-extrabold text-amber-200 truncate">🎈 ${escapeHTML(wish.author)}</span>
                                 <div class="flex items-center gap-1.5 shrink-0">
                                     <span class="text-[10px] text-white/75">${escapeHTML(wish.date || 'Today')}</span>
-                                    <button type="button" onclick="event.stopPropagation(); deleteFloatingWish(${idx})" title="Delete floating wish for ALL buddies" aria-label="Delete floating wish" class="w-5 h-5 rounded-full bg-black/35 hover:bg-rose-500 text-white/90 hover:text-white text-[10px] font-bold flex items-center justify-center transition cursor-pointer">✕</button>
+                                    <button type="button" onclick="event.stopPropagation(); deleteFloatingWish(${idx})" title="Delete for all buddies" aria-label="Delete floating wish" class="w-5 h-5 rounded-full bg-black/35 hover:bg-rose-500 text-white/90 hover:text-white text-[10px] font-bold flex items-center justify-center transition cursor-pointer">✕</button>
                                 </div>
                             </div>
                             <p class="text-xs leading-snug text-white/95 line-clamp-3">"${escapeHTML(wish.text)}"</p>
@@ -2199,7 +2165,7 @@
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
                                 <span class="text-[10px] text-slate-400">${escapeHTML(w.date || 'Today')}</span>
-                                <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete wish for ALL buddies" aria-label="Delete wish" class="w-6 h-6 rounded-full bg-white/10 hover:bg-rose-500/80 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center transition cursor-pointer">✕</button>
+                                <button type="button" onclick="deleteFloatingWish(${idx})" title="Delete wish for all buddies" aria-label="Delete wish" class="w-6 h-6 rounded-full bg-white/10 hover:bg-rose-500/80 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center transition cursor-pointer">✕</button>
                             </div>
                         </div>
                     `).join('');
@@ -2210,19 +2176,13 @@
         function deleteFloatingWish(index) {
             if (index < 0 || index >= wishesData.length) return;
             const removed = wishesData.splice(index, 1)[0];
-            const wishId = String(removed.id || '');
-            if (wishId) {
-                deletedWishIds.add(wishId);
-                persistDeletedIdsLocally();
-            }
+            if (removed.id) deletedWishIds.add(String(removed.id));
+            deletedWishIds.add(makeWishKey(removed.author, removed.text));
+            persistDeletedIdsLocally();
             persistWishesLocally();
             renderFloatingWishes();
-            showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
-
-            if (squadBroadcast) {
-                try { squadBroadcast.postMessage({ action: 'delete', wishId }); } catch (e) {}
-            }
             publishRetainedStateToAllBrokers();
+            showToast(`Deleted "${removed.author}"'s wish for ALL buddies 🗑️`, '🗑️');
         }
 
         function toggleFloatingWishes() {
@@ -2242,7 +2202,7 @@
                 if (!author || !text) return;
 
                 const newWish = {
-                    id: `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                     author,
                     text,
                     date: '13/11/2026',
@@ -2250,17 +2210,13 @@
                 };
                 wishesData = mergeWishesLists([newWish], wishesData);
                 floatingVisible = true;
-
                 persistWishesLocally();
                 renderFloatingWishes();
+                publishRetainedStateToAllBrokers();
+
                 triggerConfettiBurst(0.5, 0.45);
                 nameInput.value = '';
                 textInput.value = '';
-
-                if (squadBroadcast) {
-                    try { squadBroadcast.postMessage({ action: 'add', ...newWish }); } catch (e) {}
-                }
-                publishRetainedStateToAllBrokers();
 
                 sendCardAndOpenShareModal({
                     type: '🎈 Floating Anniversary Wish',
@@ -2363,7 +2319,7 @@
         }
 
         // ==========================================
-        // 7. GAME 1: FAB 8 LIVE SQUAD HOT POTATO & PASS-THE-BOMB
+        // 7. GAME 1: FAB 8 LIVE SQUAD HOT POTATO & PASS-THE-BOMB (30 HILARIOUS WHATSAPP DARES + NO-REPEAT DECK)
         // ==========================================
         let bombActive = false;
         let bombIndex = 0;
@@ -2372,14 +2328,51 @@
         let bombExplodeTimeout = null;
         let bombIntervalMs = 260;
         let lastBombVictim = null;
+        let usedDaresHistory = new Set();
 
-        const bombDares = [
-            "Drop a voice note singing 'Happy 4th Anniversary Best Buddies' in the WhatsApp group right now!",
-            "Send your funniest unfiltered selfie in 😍Best buddies forever🥳 within 30 seconds!",
-            "Treat the Fab 8 squad to samosas or chai on our next hangout!",
-            "Write a 3-line appreciation post for the person sitting right after you in the Fab 8 list!",
-            "Change your WhatsApp bio to '😍Best buddies forever🥳 4 Years Strong!' for 24 hours!"
+        const whatsappSquadDares = [
+            "Drop a 15-second voice note in 😍Best buddies forever🥳 singing 'Happy 4th Anniversary' in an opera voice!",
+            "Send your funniest unfiltered 0.5x wide-angle selfie in the WhatsApp group within 20 seconds!",
+            "Send a voice note imitating Shashi's 4-minute podcast intro style in the group right now!",
+            "Post the 9th photo from your phone gallery in 😍Best buddies forever🥳 with zero explanation!",
+            "Type a 3-line appreciation speech for the Fab 8 squad using ONLY emojis — no words allowed!",
+            "Change your WhatsApp About/Bio to '😍Best buddies forever🥳 4 Years Strong!' for the next 24 hours!",
+            "Send a voice note trying to rap all 8 names (Gowri, Sai, Shashi, Gopi, Alisha, Mohan, Minni, Yuvaraj) in under 7 seconds!",
+            "Let the rest of the Fab 8 choose a funny sticker/photo for your WhatsApp DP for 24 hours!",
+            "Reply to the next 5 messages in the WhatsApp group ONLY using Gopi-style meme stickers!",
+            "Send a voice note speaking like a dramatic Telugu/Hindi movie villain thanking the group for 4 years!",
+            "Share a screenshot of your most recently used emojis in 😍Best buddies forever🥳 right now!",
+            "Send a dramatic 'Guys I have a huge announcement...' message in the group, wait 30 seconds, then reply 'I just drank water 💧'!",
+            "Record a 10-second WhatsApp audio note laughing like an evil cartoon villain without breaking character!",
+            "Send the oldest saved photo of the squad you have on your phone into the group chat right now!",
+            "Tag any 2 buddies in the WhatsApp group and give them a hilarious fake award title!",
+            "Send a voice note describing Yuvaraj's favorite food like a 5-star MasterChef judge!",
+            "Type a message in the WhatsApp group with your eyes closed without using backspace!",
+            "Send a 'Good Morning 🌞🌹' forward-style message in the group regardless of what time it is!",
+            "Share a screenshot of your YouTube watch history or last 3 Google searches in the chat!",
+            "Record a WhatsApp voice note pretending to be Mohan apologizing for replying 3 business days late!",
+            "Send a 10-second video message doing your best victory dance for our 4th Anniversary!",
+            "Write a 2-line poetic shayari dedicated to 😍Best buddies forever🥳 and send it in the group!",
+            "Send a sticker that best describes your face when Gowri starts planning a chaotic hangout!",
+            "Post a WhatsApp Status saying '4 Years of 😍Best buddies forever🥳 — Best Squad Ever!' with a funny selfie!",
+            "Send a voice note whispering a 'top secret' message that just says 'Bread Omelet is life 🍳'!",
+            "Tag Gopi in the group and challenge him to a 3-sticker battle right now!",
+            "Send a voice note mimicking a railway station announcement for the 'Fab 8 Express'!",
+            "Share the funniest meme currently sitting in your WhatsApp media folder!",
+            "Send a message praising the person right below you in the Fab 8 list as your 'role model'!",
+            "Record a 12-second audio note humming your favorite song and make the group guess it!"
         ];
+
+        function fetchFreshRandomDare() {
+            let available = whatsappSquadDares.filter(d => !usedDaresHistory.has(d));
+            if (available.length === 0) {
+                usedDaresHistory.clear();
+                available = [...whatsappSquadDares];
+            }
+            const picked = available[Math.floor(Math.random() * available.length)];
+            usedDaresHistory.add(picked);
+            return { text: picked, source: '💬 WhatsApp Dare' };
+        }
 
         function renderHotPotatoRing(activeIdx = -1, exploded = false) {
             const ring = document.getElementById('hot-potato-ring');
@@ -2412,11 +2405,12 @@
             bombActive = true;
             bombIndex = Math.floor(Math.random() * fab8Roster.length);
             bombDirection = 1;
-            bombIntervalMs = 240;
+            bombIntervalMs = 260;
 
             const startBtn = document.getElementById('bomb-start-btn');
             const passBtn = document.getElementById('bomb-pass-btn');
             const revBtn = document.getElementById('bomb-reverse-btn');
+            const newDareBtn = document.getElementById('bomb-new-dare-btn');
             const shareBtn = document.getElementById('bomb-share-btn');
             const titleEl = document.getElementById('bomb-status-title');
             const subEl = document.getElementById('bomb-status-sub');
@@ -2424,15 +2418,20 @@
             if (startBtn) startBtn.disabled = true;
             if (passBtn) passBtn.disabled = false;
             if (revBtn) revBtn.disabled = false;
+            if (newDareBtn) newDareBtn.classList.add('hidden');
             if (shareBtn) shareBtn.classList.add('hidden');
-            if (titleEl) titleEl.textContent = '💣 Fuse Lit! Pass the Bomb Fast!';
-            if (subEl) subEl.textContent = 'Tap "Pass Now!" or "Reverse" before the timer hits zero!';
+            if (titleEl) titleEl.textContent = `💣 Fuse Lit! Holding: ${fab8Roster[bombIndex].name} ${fab8Roster[bombIndex].emoji}`;
+            if (subEl) subEl.textContent = 'Tap "⚡ Pass Now!" or "🔄 Reverse" to pass it away before BOOM!';
 
             renderHotPotatoRing(bombIndex, false);
 
+            clearInterval(bombStepTimer);
             bombStepTimer = setInterval(() => {
                 bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
                 renderHotPotatoRing(bombIndex, false);
+                if (titleEl && bombActive) {
+                    titleEl.textContent = `💣 Ticking on: ${fab8Roster[bombIndex].name} ${fab8Roster[bombIndex].emoji}`;
+                }
             }, bombIntervalMs);
 
             const fuseDuration = 4500 + Math.random() * 4500;
@@ -2444,36 +2443,130 @@
                 if (revBtn) revBtn.disabled = true;
 
                 const victim = fab8Roster[bombIndex];
-                const dare = bombDares[Math.floor(Math.random() * bombDares.length)];
-                lastBombVictim = { buddy: victim, dare };
-
                 renderHotPotatoRing(bombIndex, true);
                 triggerConfettiBurst(0.5, 0.6);
 
+                const dareResult = fetchFreshRandomDare();
+                lastBombVictim = { buddy: victim, dare: dareResult.text };
+
                 if (titleEl) titleEl.textContent = `💥 BOOM! Caught ${victim.name} ${victim.emoji}!`;
-                if (subEl) subEl.textContent = `Anniversary Dare: ${dare}`;
+                if (subEl) subEl.textContent = `${dareResult.source}: ${dareResult.text}`;
+                if (newDareBtn) newDareBtn.classList.remove('hidden');
                 if (shareBtn) shareBtn.classList.remove('hidden');
             }, fuseDuration);
         }
 
+        function rerollBombDare() {
+            if (!lastBombVictim || bombActive) return;
+            const subEl = document.getElementById('bomb-status-sub');
+            const dareResult = fetchFreshRandomDare();
+            lastBombVictim.dare = dareResult.text;
+            if (subEl) subEl.textContent = `${dareResult.source}: ${dareResult.text}`;
+            showToast('New WhatsApp dare rolled! 💬🎲', '🔥');
+        }
+
         function manualPassBomb() {
-            if (!bombActive) return;
+            if (!bombActive) {
+                showToast('Tap "💣 Light the Fuse!" first to start passing!', '💣');
+                return;
+            }
+            const sender = fab8Roster[bombIndex];
             bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
+            const receiver = fab8Roster[bombIndex];
+
+            // Reset auto-tick timer so manual tap doesn't double-skip
+            clearInterval(bombStepTimer);
+            bombIntervalMs = Math.max(150, bombIntervalMs - 10);
+            const titleEl = document.getElementById('bomb-status-title');
+            const subEl = document.getElementById('bomb-status-sub');
+            if (titleEl) titleEl.textContent = `⚡ Passed to ${receiver.name} ${receiver.emoji}!`;
+            if (subEl) subEl.textContent = `${sender.name} threw the bomb → ${receiver.name}! Keep passing fast!`;
+
             renderHotPotatoRing(bombIndex, false);
+
+            function scheduleBombAutoTick() {
+                clearInterval(bombStepTimer);
+                bombStepTimer = setInterval(() => {
+                    if (!bombActive) return;
+                    bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
+                    renderHotPotatoRing(bombIndex, false);
+                }, bombIntervalMs);
+            }
+            window._scheduleBombAutoTick = scheduleBombAutoTick;
+            scheduleBombAutoTick();
+
+            const fuseDuration = 5000 + Math.random() * 4500;
+            bombExplodeTimeout = setTimeout(() => {
+                clearInterval(bombStepTimer);
+                bombActive = false;
+                if (startBtn) startBtn.disabled = false;
+                if (passBtn) passBtn.disabled = true;
+                if (revBtn) revBtn.disabled = true;
+
+                const victim = fab8Roster[bombIndex];
+                renderHotPotatoRing(bombIndex, true);
+                triggerConfettiBurst(0.5, 0.6);
+
+                const dareResult = fetchFreshRandomDare();
+                lastBombVictim = { buddy: victim, dare: dareResult.text };
+
+                if (titleEl) titleEl.textContent = `💥 BOOM! Caught ${victim.name} ${victim.emoji}!`;
+                if (subEl) subEl.textContent = `${dareResult.source}: ${dareResult.text}`;
+                if (newDareBtn) newDareBtn.classList.remove('hidden');
+                if (shareBtn) shareBtn.classList.remove('hidden');
+            }, fuseDuration);
+        }
+
+        function rerollBombDare() {
+            if (!lastBombVictim || bombActive) return;
+            const subEl = document.getElementById('bomb-status-sub');
+            const dareResult = fetchFreshRandomDare();
+            lastBombVictim.dare = dareResult.text;
+            if (subEl) subEl.textContent = `${dareResult.source}: ${dareResult.text}`;
+            showToast('New WhatsApp dare rolled! 💬🎲', '🔥');
+        }
+
+        function manualPassBomb() {
+            if (!bombActive) {
+                showToast('Tap "💣 Light the Fuse!" first to start passing!', '💣');
+                return;
+            }
+            const prevHolder = fab8Roster[bombIndex];
+            bombIndex = (bombIndex + bombDirection + fab8Roster.length) % fab8Roster.length;
+            const nextHolder = fab8Roster[bombIndex];
+
+            renderHotPotatoRing(bombIndex, false);
+            if (typeof window._scheduleBombAutoTick === 'function') {
+                window._scheduleBombAutoTick();
+            }
+
+            const titleEl = document.getElementById('bomb-status-title');
+            const passBtn = document.getElementById('bomb-pass-btn');
+            if (titleEl) {
+                titleEl.textContent = `⚡ ${prevHolder.name} passed to ${nextHolder.name} ${nextHolder.emoji}!`;
+            }
+            if (passBtn) {
+                passBtn.classList.add('scale-95');
+                setTimeout(() => passBtn.classList.remove('scale-95'), 120);
+            }
         }
 
         function reverseBombDirection() {
             if (!bombActive) return;
             bombDirection *= -1;
+            const titleEl = document.getElementById('bomb-status-title');
+            if (titleEl) {
+                titleEl.textContent = `🔄 Reversed! Now passing ${bombDirection === 1 ? 'Forward ➡️' : 'Backward ⬅️'}`;
+            }
             showToast('Direction Reversed! 🔄', '🔄');
         }
 
         function shareBombLoserCard() {
             if (!lastBombVictim) return;
             sendCardAndOpenShareModal({
-                type: '💣 Hot Potato Party Challenge',
+                type: '💣 Hot Potato WhatsApp Dare',
                 headline: `${lastBombVictim.buddy.name} ${lastBombVictim.buddy.emoji} Caught the Bomb!`,
-                body: `4th Anniversary Challenge: ${lastBombVictim.dare}`,
+                body: `WhatsApp Dare: ${lastBombVictim.dare}`,
                 author: 'Fab 8 Party Bomb'
             });
         }
@@ -2745,7 +2838,7 @@
         }
 
         // ==========================================
-        // 9B. GOPI BIRTHDAY WISH LAUNCHER (SYNCED TO ALL BUDDIES)
+        // 9B. GOPI BIRTHDAY WISH LAUNCHER
         // ==========================================
         function sendGopiBirthdayWish() {
             const senderInput = document.getElementById('gopi-bday-sender');
@@ -2754,7 +2847,7 @@
             const msg = (msgInput && msgInput.value.trim()) || 'Happy Birthday Gopi! 😂🎂🥳';
 
             const newWish = {
-                id: `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                 author: `${sender} → Gopi 🎂`,
                 text: msg,
                 date: 'Nov B’day',
@@ -2764,10 +2857,6 @@
             floatingVisible = true;
             persistWishesLocally();
             renderFloatingWishes();
-
-            if (squadBroadcast) {
-                try { squadBroadcast.postMessage({ action: 'add', ...newWish }); } catch (e) {}
-            }
             publishRetainedStateToAllBrokers();
 
             triggerConfettiBurst(0.3, 0.4);
@@ -2776,61 +2865,6 @@
             sendCardAndOpenShareModal({
                 type: '🎂 Happy Birthday Gopi 😂🥳',
                 headline: `Happy Birthday Gopi!`,
-                body: msg,
-                author: sender
-            });
-        }
-
-        // ==========================================
-        // 9C. YUVARAJ ADVANCE BIRTHDAY WISH LAUNCHER (7TH DECEMBER)
-        // ==========================================
-        function updateYuvarajBirthdayCountdown() {
-            const pill = document.getElementById('yuvaraj-countdown-pill');
-            if (!pill) return;
-            const now = new Date();
-            let target = new Date(now.getFullYear(), 11, 7, 0, 0, 0); // Dec 7
-            if (now > target && now.getDate() !== 7) {
-                target = new Date(now.getFullYear() + 1, 11, 7, 0, 0, 0);
-            }
-            const diffMs = target - now;
-            if (now.getMonth() === 11 && now.getDate() === 7) {
-                pill.textContent = '🎂 TODAY IS YUVARAJ’S BIRTHDAY!';
-                return;
-            }
-            const daysLeft = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-            pill.textContent = `⏳ ${daysLeft} Day${daysLeft === 1 ? '' : 's'} to 7th Dec!`;
-        }
-
-        function sendYuvarajAdvanceBirthdayWish() {
-            const senderInput = document.getElementById('yuvaraj-bday-sender');
-            const msgInput = document.getElementById('yuvaraj-bday-msg');
-            const sender = (senderInput && senderInput.value.trim()) || 'Fab 8 Squad';
-            const msg = (msgInput && msgInput.value.trim()) || 'Advance Happy Birthday Yuvaraj (7th Dec)! 🍔🎂🥳';
-
-            const newWish = {
-                id: `w_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                author: `${sender} → Yuvaraj (Adv B'day 7 Dec) 🍔`,
-                text: msg,
-                date: '7 Dec Adv',
-                createdAt: Date.now()
-            };
-            wishesData = mergeWishesLists([newWish], wishesData);
-            floatingVisible = true;
-            persistWishesLocally();
-            renderFloatingWishes();
-
-            if (squadBroadcast) {
-                try { squadBroadcast.postMessage({ action: 'add', ...newWish }); } catch (e) {}
-            }
-            publishRetainedStateToAllBrokers();
-
-            triggerConfettiBurst(0.25, 0.45);
-            setTimeout(() => triggerConfettiBurst(0.5, 0.35), 180);
-            setTimeout(() => triggerConfettiBurst(0.75, 0.45), 360);
-
-            sendCardAndOpenShareModal({
-                type: '🍔 Advance Happy Birthday Yuvaraj (7th Dec) 🎉',
-                headline: `Advance Happy Birthday Yuvaraj!`,
                 body: msg,
                 author: sender
             });
@@ -2979,15 +3013,13 @@
 
         function shareCardToWhatsApp() {
             if (!currentCardPayload) return;
-            persistWishesLocally();
             const shareText =
                 `*😍Best buddies forever🥳 — 4th Anniversary Card!*\n` +
                 `📅 _13/11/2022 – 13/11/2026 (Fab 8 Squad)_\n\n` +
                 `*${currentCardPayload.type}*\n` +
                 `*${currentCardPayload.headline}*\n` +
                 `"${currentCardPayload.body}"\n` +
-                `— *${currentCardPayload.author}*\n\n` +
-                `🎈 Live Page: ${window.location.href}`;
+                `— *${currentCardPayload.author}*`;
 
             const canvas = renderCardToCanvas();
             if (canvas && navigator.canShare && navigator.share) {
@@ -3012,7 +3044,8 @@
 
         // Initialize all sections immediately on page load
         loadSavedWishesOnBoot();
-        initDualMqttCloudSync();
+        renderFloatingWishes();
+        initMqttCloudSync();
         renderHotPotatoRing(-1, false);
         initMemoryGame();
     </script>
